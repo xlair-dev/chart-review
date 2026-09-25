@@ -18,9 +18,9 @@ function laneRange(lane: Lane): [number, number] {
 	}
 	const sideLanes: [number, number][] = [
 		[0, 1],
-		[19, 20],
-		[18, 19],
 		[1, 2],
+		[18, 19],
+		[19, 20],
 	];
 	return sideLanes[sideOrder.indexOf(lane.button)];
 }
@@ -48,8 +48,37 @@ function noteColor(note: Note): string {
 function chartEnd(chart: ChartData): number {
 	return Math.max(
 		4,
-		...chart.notes.map((note) => positionValue(note.position)),
+		...chart.notes.flatMap((note) => [
+			positionValue(note.position),
+			...(note.kind.type === "hold" ||
+			note.kind.type === "exHold" ||
+			note.kind.type === "airHold"
+				? [positionValue(note.kind.end)]
+				: []),
+			...(note.kind.type === "slide" || note.kind.type === "exSlide"
+				? note.kind.points.map((point) => positionValue(point.position))
+				: []),
+			...(note.kind.type === "airSlide" || note.kind.type === "airCrush"
+				? note.kind.points.map((point) => positionValue(point.position))
+				: []),
+		]),
 	);
+}
+
+function pathPoints(note: Note): { position: number; lane: Lane }[] {
+	if (note.kind.type === "slide" || note.kind.type === "exSlide") {
+		return note.kind.points.map((point) => ({
+			position: positionValue(point.position),
+			lane: point.lane,
+		}));
+	}
+	if (note.kind.type === "airSlide" || note.kind.type === "airCrush") {
+		return note.kind.points.map((point) => ({
+			position: positionValue(point.position),
+			lane: point.lane,
+		}));
+	}
+	return [];
 }
 
 function paintSheet(canvas: HTMLCanvasElement, chart: ChartData) {
@@ -96,6 +125,23 @@ function paintSheet(canvas: HTMLCanvasElement, chart: ChartData) {
 		const endPosition =
 			"end" in note.kind ? positionValue(note.kind.end) : undefined;
 		context.fillStyle = noteColor(note);
+		const points = [
+			{ position: positionValue(note.position), lane: note.lane },
+			...pathPoints(note),
+		];
+		if (points.length > 1) {
+			context.strokeStyle = noteColor(note);
+			context.lineWidth = Math.max(3, laneWidth * 0.5);
+			context.beginPath();
+			points.forEach((point, index) => {
+				const [pathStart, pathEnd] = laneRange(point.lane);
+				const pathX = left + ((pathStart + pathEnd) / 2) * laneWidth;
+				const pathY = bottom - (point.position / end) * (bottom - top);
+				if (index === 0) context.moveTo(pathX, pathY);
+				else context.lineTo(pathX, pathY);
+			});
+			context.stroke();
+		}
 		if (endPosition !== undefined) {
 			const endY = bottom - (endPosition / end) * (bottom - top);
 			context.globalAlpha = 0.45;
@@ -156,6 +202,29 @@ function paintPlayfield(canvas: HTMLCanvasElement, chart: ChartData) {
 		if (y > height * 0.86 || y < horizonY) continue;
 		const [startLane, endLane] = laneRange(note.lane);
 		const perspective = y / height;
+		const points = pathPoints(note);
+		if (points.length > 1) {
+			context.strokeStyle = noteColor(note);
+			context.lineWidth = 3 + perspective * 5;
+			context.beginPath();
+			[
+				{ position: positionValue(note.position), lane: note.lane },
+				...points,
+			].forEach((point, index) => {
+				const pointProgress = point.position / end;
+				const pointDepth = 1 - pointProgress;
+				const pointY = horizonY + pointDepth ** 1.7 * (height * 0.62);
+				const [pointStart, pointEnd] = laneRange(point.lane);
+				const pointX =
+					center +
+					(((pointStart + pointEnd) / 2 - 10) / 16) *
+						floorWidth *
+						(pointY / height);
+				if (index === 0) context.moveTo(pointX, pointY);
+				else context.lineTo(pointX, pointY);
+			});
+			context.stroke();
+		}
 		const gameWidth =
 			floorWidth *
 			(startLane === 0 || endLane === 20
