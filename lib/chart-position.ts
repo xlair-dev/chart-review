@@ -12,3 +12,22 @@ export function positionValue(position: Position): number {
 		return 0;
 	}
 }
+
+export function positionFromValue(value: number): Position {
+	const denominator = BigInt(1_000_000);
+	const numerator = BigInt(
+		Math.max(0, Math.round(value * Number(denominator))),
+	);
+	let left = numerator;
+	let right = denominator;
+	while (right !== BigInt(0)) {
+		const remainder = left % right;
+		left = right;
+		right = remainder;
+	}
+	const divisor = left === BigInt(0) ? BigInt(1) : left;
+	return {
+		numerator: (numerator / divisor).toString(),
+		denominator: (denominator / divisor).toString(),
+	};
+}
