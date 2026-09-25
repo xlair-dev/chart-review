@@ -11,6 +11,7 @@ import {
 
 export function ChartPlayback({ chart }: { chart: ChartData }) {
 	const audio = useRef<HTMLAudioElement>(null);
+	const playbackFrame = useRef<number | undefined>(undefined);
 	const [audioUrl, setAudioUrl] = useState<string>();
 	const [position, setPosition] = useState(0);
 	const canPlay = supportsChartTiming(chart);
@@ -19,6 +20,13 @@ export function ChartPlayback({ chart }: { chart: ChartData }) {
 		if (!audioUrl) return;
 		return () => URL.revokeObjectURL(audioUrl);
 	}, [audioUrl]);
+	useEffect(
+		() => () => {
+			if (playbackFrame.current !== undefined)
+				cancelAnimationFrame(playbackFrame.current);
+		},
+		[],
+	);
 
 	useEffect(() => {
 		function handleSpace(event: KeyboardEvent) {
@@ -54,6 +62,30 @@ export function ChartPlayback({ chart }: { chart: ChartData }) {
 		}
 	}
 
+	function syncPlaybackPosition() {
+		const player = audio.current;
+		if (!player || player.paused) {
+			playbackFrame.current = undefined;
+			return;
+		}
+		setPosition(positionAtSeconds(chart, player.currentTime));
+		playbackFrame.current = requestAnimationFrame(syncPlaybackPosition);
+	}
+
+	function startPlaybackSync() {
+		if (playbackFrame.current !== undefined)
+			cancelAnimationFrame(playbackFrame.current);
+		playbackFrame.current = requestAnimationFrame(syncPlaybackPosition);
+	}
+
+	function stopPlaybackSync() {
+		if (playbackFrame.current !== undefined)
+			cancelAnimationFrame(playbackFrame.current);
+		playbackFrame.current = undefined;
+		if (audio.current)
+			setPosition(positionAtSeconds(chart, audio.current.currentTime));
+	}
+
 	return (
 		<div className="space-y-5">
 			<section className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -81,9 +113,12 @@ export function ChartPlayback({ chart }: { chart: ChartData }) {
 					<audio
 						className="mt-4 w-full"
 						controls
+						onEnded={stopPlaybackSync}
 						onLoadedMetadata={(event) => {
 							event.currentTarget.currentTime = secondsAtBeat(chart, position);
 						}}
+						onPause={stopPlaybackSync}
+						onPlay={startPlaybackSync}
 						onTimeUpdate={(event) => {
 							setPosition(
 								positionAtSeconds(chart, event.currentTarget.currentTime),
