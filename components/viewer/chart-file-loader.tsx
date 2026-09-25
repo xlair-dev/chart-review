@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChartRenderer } from "@/components/viewer/chart-renderer";
+import { ChartPlayback } from "@/components/viewer/chart-playback";
 import type { ChartData } from "@/lib/chart-model";
 import { parseChartFile } from "@/lib/chart-parser";
 
@@ -84,7 +84,7 @@ export function ChartFileLoader() {
 			</div>
 			{chart && (
 				<div className="mt-8">
-					<ChartRenderer chart={chart} />
+					<ChartPlayback chart={chart} />
 				</div>
 			)}
 		</section>

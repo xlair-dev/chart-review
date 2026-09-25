@@ -98,10 +98,10 @@ function paintSheet(
 	context.fillRect(0, 0, width, height);
 	const left = 34;
 	const right = width - 18;
-	const top = 30;
-	const bottom = height - 30;
-	const laneWidth = (right - left) / laneCount;
+	const top = (canvas.parentElement?.clientHeight ?? 36) * 0.82;
 	const end = chartEnd(chart);
+	const bottom = top + height - (canvas.parentElement?.clientHeight ?? 0);
+	const laneWidth = (right - left) / laneCount;
 
 	for (let lane = 0; lane <= laneCount; lane++) {
 		const x = left + lane * laneWidth;
@@ -209,7 +209,6 @@ function paintPlayfield(
 	context.lineTo(center + floorWidth / 2 + 12, height * 0.86);
 	context.stroke();
 
-	const end = chartEnd(chart);
 	const approachBeats = 8;
 	for (const note of chart.notes) {
 		const distance = positionValue(note.position) - currentBeat;
@@ -228,8 +227,9 @@ function paintPlayfield(
 				{ position: positionValue(note.position), lane: note.lane },
 				...points,
 			].forEach((point, index) => {
-				const pointProgress = point.position / end;
-				const pointDepth = 1 - pointProgress;
+				const pointDistance = point.position - currentBeat;
+				if (pointDistance < -1 || pointDistance > approachBeats) return;
+				const pointDepth = 1 - pointDistance / approachBeats;
 				const pointY = horizonY + pointDepth ** 1.7 * (height * 0.62);
 				const [pointStart, pointEnd] = laneRange(point.lane);
 				const pointX =
@@ -262,10 +262,19 @@ function paintPlayfield(
 	}
 }
 
-export function ChartRenderer({ chart }: { chart: ChartData }) {
+export function ChartRenderer({
+	chart,
+	position,
+	onPositionChange,
+}: {
+	chart: ChartData;
+	position?: number;
+	onPositionChange?: (position: number) => void;
+}) {
 	const sheet = useRef<HTMLCanvasElement>(null);
 	const playfield = useRef<HTMLCanvasElement>(null);
-	const [currentBeat, setCurrentBeat] = useState(0);
+	const [localPosition, setLocalPosition] = useState(0);
+	const currentBeat = position ?? localPosition;
 	const end = chartEnd(chart);
 
 	useEffect(() => {
@@ -280,18 +289,31 @@ export function ChartRenderer({ chart }: { chart: ChartData }) {
 		if (playfield.current) observer.observe(playfield.current);
 		return () => observer.disconnect();
 	}, [chart, currentBeat]);
+	useEffect(() => {
+		if (position === undefined) return;
+		setLocalPosition(position);
+		const canvas = sheet.current;
+		const viewport = canvas?.parentElement;
+		if (!canvas || !viewport) return;
+		const contentHeight = canvas.clientHeight - viewport.clientHeight;
+		const scrollTop = Math.max(0, (position / end) * contentHeight);
+		if (Math.abs(viewport.scrollTop - scrollTop) > 2)
+			viewport.scrollTop = scrollTop;
+	}, [position, end]);
+
+	function changePosition(beat: number) {
+		setLocalPosition(beat);
+		onPositionChange?.(beat);
+	}
 
 	function seekTo(beat: number) {
 		const canvas = sheet.current;
 		const viewport = canvas?.parentElement;
 		if (canvas && viewport) {
-			const judgeY = viewport.clientHeight * 0.82;
-			viewport.scrollTop = Math.max(
-				0,
-				(beat / end) * canvas.clientHeight - judgeY,
-			);
+			const contentHeight = canvas.clientHeight - viewport.clientHeight;
+			viewport.scrollTop = Math.max(0, (beat / end) * contentHeight);
 		}
-		setCurrentBeat(beat);
+		changePosition(beat);
 	}
 
 	return (
@@ -304,17 +326,16 @@ export function ChartRenderer({ chart }: { chart: ChartData }) {
 						const viewport = event.currentTarget;
 						const canvas = sheet.current;
 						if (!canvas) return;
-						const judgeY = viewport.clientHeight * 0.82;
-						const beat =
-							((viewport.scrollTop + judgeY) / canvas.clientHeight) * end;
-						setCurrentBeat(Math.max(0, Math.min(end, beat)));
+						const contentHeight = canvas.clientHeight - viewport.clientHeight;
+						const beat = (viewport.scrollTop / contentHeight) * end;
+						changePosition(Math.max(0, Math.min(end, beat)));
 					}}
 				>
 					<canvas
 						aria-label="譜面全体"
 						className="block w-full"
 						ref={sheet}
-						style={{ height: `${Math.max(1800, end * 80)}px` }}
+						style={{ height: `calc(${Math.max(1800, end * 80)}px + 70vh)` }}
 					/>
 					<div className="pointer-events-none sticky bottom-[18%] h-0 border-t-2 border-rose-400 shadow-[0_0_12px_#fb7185]" />
 				</div>
