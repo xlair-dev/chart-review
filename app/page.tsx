@@ -12,7 +12,8 @@ const workspaces = [
 		number: "02",
 		title: "フィードバック会",
 		description: "譜面を共有し、コメントと進捗を管理する。",
-		status: "準備中",
+		status: "利用可能",
+		href: "/feedback",
 	},
 ];
 
