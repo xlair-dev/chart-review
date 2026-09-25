@@ -21,6 +21,8 @@ pnpm dev
 
 `pnpm dev` と `pnpm build` は ChartConverter を使った譜面パーサーを Wasm にビルドする。パーサーの ChartConverter revision は `wasm/chart-parser/Cargo.toml` で固定する。
 
+FB 会機能では `CHART_REVIEW_SERVER_URL` と `CHART_REVIEW_DEVICE_TOKEN` を `.env.local` に設定する。トークンはサーバー側から `/sync` と音源 API を呼ぶために使い、ブラウザーには返さない。SQLite とアップロード譜面は `CHART_REVIEW_DATA_DIR` (既定値 `./data`) に保存する。本番環境では、このディレクトリを永続ボリュームに割り当てる。
+
 ## コマンド
 
 ```sh
