@@ -1,0 +1,11 @@
+{
+	"files": {
+		"includes": ["**", "!!**/.next"],
+		"maxSize": 2097152
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	}
+}
