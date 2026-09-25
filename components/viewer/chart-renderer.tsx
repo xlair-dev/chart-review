@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChartData, Lane, Note } from "@/lib/chart-model";
 import { positionValue } from "@/lib/chart-position";
 
@@ -81,7 +81,11 @@ function pathPoints(note: Note): { position: number; lane: Lane }[] {
 	return [];
 }
 
-function paintSheet(canvas: HTMLCanvasElement, chart: ChartData) {
+function paintSheet(
+	canvas: HTMLCanvasElement,
+	chart: ChartData,
+	currentBeat: number,
+) {
 	const context = canvas.getContext("2d");
 	if (!context) return;
 	const width = canvas.clientWidth;
@@ -109,7 +113,7 @@ function paintSheet(canvas: HTMLCanvasElement, chart: ChartData) {
 		context.stroke();
 	}
 	for (let beat = 0; beat <= end; beat++) {
-		const y = bottom - (beat / end) * (bottom - top);
+		const y = top + (beat / end) * (bottom - top);
 		context.strokeStyle = beat % 4 === 0 ? "#475569" : "#1e293b";
 		context.beginPath();
 		context.moveTo(left, y);
@@ -121,7 +125,7 @@ function paintSheet(canvas: HTMLCanvasElement, chart: ChartData) {
 		const [startLane, endLane] = laneRange(note.lane);
 		const x = left + startLane * laneWidth + 2;
 		const noteWidth = Math.max(4, (endLane - startLane) * laneWidth - 4);
-		const y = bottom - (positionValue(note.position) / end) * (bottom - top);
+		const y = top + (positionValue(note.position) / end) * (bottom - top);
 		const endPosition =
 			"end" in note.kind ? positionValue(note.kind.end) : undefined;
 		context.fillStyle = noteColor(note);
@@ -136,14 +140,14 @@ function paintSheet(canvas: HTMLCanvasElement, chart: ChartData) {
 			points.forEach((point, index) => {
 				const [pathStart, pathEnd] = laneRange(point.lane);
 				const pathX = left + ((pathStart + pathEnd) / 2) * laneWidth;
-				const pathY = bottom - (point.position / end) * (bottom - top);
+				const pathY = top + (point.position / end) * (bottom - top);
 				if (index === 0) context.moveTo(pathX, pathY);
 				else context.lineTo(pathX, pathY);
 			});
 			context.stroke();
 		}
 		if (endPosition !== undefined) {
-			const endY = bottom - (endPosition / end) * (bottom - top);
+			const endY = top + (endPosition / end) * (bottom - top);
 			context.globalAlpha = 0.45;
 			context.fillRect(x + noteWidth * 0.35, y, noteWidth * 0.3, endY - y);
 			context.globalAlpha = 1;
@@ -152,9 +156,20 @@ function paintSheet(canvas: HTMLCanvasElement, chart: ChartData) {
 		context.roundRect(x, y - 5, noteWidth, 10, 4);
 		context.fill();
 	}
+	const cursorY = top + (currentBeat / end) * (bottom - top);
+	context.strokeStyle = "#fb7185";
+	context.lineWidth = 2;
+	context.beginPath();
+	context.moveTo(left, cursorY);
+	context.lineTo(right, cursorY);
+	context.stroke();
 }
 
-function paintPlayfield(canvas: HTMLCanvasElement, chart: ChartData) {
+function paintPlayfield(
+	canvas: HTMLCanvasElement,
+	chart: ChartData,
+	currentBeat: number,
+) {
 	const context = canvas.getContext("2d");
 	if (!context) return;
 	const width = canvas.clientWidth;
@@ -195,9 +210,11 @@ function paintPlayfield(canvas: HTMLCanvasElement, chart: ChartData) {
 	context.stroke();
 
 	const end = chartEnd(chart);
+	const approachBeats = 8;
 	for (const note of chart.notes) {
-		const progress = positionValue(note.position) / end;
-		const depth = 1 - progress;
+		const distance = positionValue(note.position) - currentBeat;
+		if (distance < -1 || distance > approachBeats) continue;
+		const depth = 1 - distance / approachBeats;
 		const y = horizonY + depth ** 1.7 * (height * 0.62);
 		if (y > height * 0.86 || y < horizonY) continue;
 		const [startLane, endLane] = laneRange(note.lane);
@@ -248,32 +265,75 @@ function paintPlayfield(canvas: HTMLCanvasElement, chart: ChartData) {
 export function ChartRenderer({ chart }: { chart: ChartData }) {
 	const sheet = useRef<HTMLCanvasElement>(null);
 	const playfield = useRef<HTMLCanvasElement>(null);
+	const [currentBeat, setCurrentBeat] = useState(0);
+	const end = chartEnd(chart);
 
 	useEffect(() => {
 		const draw = () => {
-			if (sheet.current) paintSheet(sheet.current, chart);
-			if (playfield.current) paintPlayfield(playfield.current, chart);
+			if (sheet.current) paintSheet(sheet.current, chart, currentBeat);
+			if (playfield.current)
+				paintPlayfield(playfield.current, chart, currentBeat);
 		};
 		draw();
 		const observer = new ResizeObserver(draw);
 		if (sheet.current) observer.observe(sheet.current);
 		if (playfield.current) observer.observe(playfield.current);
 		return () => observer.disconnect();
-	}, [chart]);
+	}, [chart, currentBeat]);
+
+	function seekTo(beat: number) {
+		const canvas = sheet.current;
+		const viewport = canvas?.parentElement;
+		if (canvas && viewport) {
+			const judgeY = viewport.clientHeight * 0.82;
+			viewport.scrollTop = Math.max(
+				0,
+				(beat / end) * canvas.clientHeight - judgeY,
+			);
+		}
+		setCurrentBeat(beat);
+	}
 
 	return (
 		<div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
 			<section className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 p-4">
 				<h2 className="mb-3 text-sm font-semibold text-white">譜面シート</h2>
-				<div className="relative max-h-[70vh] overflow-y-auto rounded-lg">
+				<div
+					className="relative max-h-[70vh] overflow-y-auto rounded-lg"
+					onScroll={(event) => {
+						const viewport = event.currentTarget;
+						const canvas = sheet.current;
+						if (!canvas) return;
+						const judgeY = viewport.clientHeight * 0.82;
+						const beat =
+							((viewport.scrollTop + judgeY) / canvas.clientHeight) * end;
+						setCurrentBeat(Math.max(0, Math.min(end, beat)));
+					}}
+				>
 					<canvas
 						aria-label="譜面全体"
 						className="block w-full"
 						ref={sheet}
-						style={{ height: `${Math.max(1800, chartEnd(chart) * 80)}px` }}
+						style={{ height: `${Math.max(1800, end * 80)}px` }}
 					/>
 					<div className="pointer-events-none sticky bottom-[18%] h-0 border-t-2 border-rose-400 shadow-[0_0_12px_#fb7185]" />
 				</div>
+				<label className="mt-4 block text-xs text-slate-300">
+					<span className="mb-2 flex justify-between">
+						<span>再生位置</span>
+						<span>{currentBeat.toFixed(2)} 拍</span>
+					</span>
+					<input
+						aria-label="再生位置"
+						className="w-full accent-rose-400"
+						max={end}
+						min={0}
+						onChange={(event) => seekTo(Number(event.target.value))}
+						step={0.01}
+						type="range"
+						value={currentBeat}
+					/>
+				</label>
 			</section>
 			<section className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 p-4">
 				<h2 className="mb-3 text-sm font-semibold text-white">
