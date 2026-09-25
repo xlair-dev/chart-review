@@ -45,6 +45,8 @@ export async function POST(
 	const difficulty = form.get("difficulty");
 	const description = form.get("description");
 	const file = form.get("file");
+	const extension =
+		file instanceof File ? file.name.split(".").pop()?.toLowerCase() : "";
 	if (
 		typeof musicId !== "string" ||
 		!(["basic", "advanced", "master"] as const).includes(
@@ -52,12 +54,17 @@ export async function POST(
 		) ||
 		typeof description !== "string" ||
 		!(file instanceof File) ||
-		!file.name.toLowerCase().endsWith(".sus") ||
+		!(["c2s", "sus", "ugc"] as const).includes(
+			extension as "c2s" | "sus" | "ugc",
+		) ||
 		file.size === 0 ||
 		file.size > 16 * 1024 * 1024
 	) {
 		return Response.json(
-			{ error: "有効な SUS 譜面と難易度を選んでください（16 MB 以下）。" },
+			{
+				error:
+					"有効な C2S、SUS、UGC 譜面と難易度を選んでください（16 MB 以下）。",
+			},
 			{ status: 400 },
 		);
 	}
@@ -74,44 +81,52 @@ export async function POST(
 				{ error: "曲と難易度がカタログにありません。" },
 				{ status: 400 },
 			);
-		if (
-			database
-				.prepare(
-					"SELECT 1 FROM passed_charts WHERE music_id = ? AND difficulty = ?",
-				)
-				.get(musicId, difficulty)
-		) {
-			return Response.json(
-				{ error: "合格済みの譜面は再アップロードできません。" },
-				{ status: 409 },
-			);
-		}
-
 		const id = randomUUID();
-		const fileName = `${id}.sus`;
-		const targetPath = path.join(chartDirectory, fileName);
-		const previous = database
-			.prepare(`
-			SELECT id, file_name AS fileName FROM meeting_charts
-			WHERE meeting_id = ? AND music_id = ? AND difficulty = ?
-		`)
-			.get(meetingId, musicId, difficulty) as
-			| { id: string; fileName: string }
-			| undefined;
+		const fileName = `${id}.${extension}`;
+		const targetPath = path.join(
+			/* turbopackIgnore: true */ chartDirectory,
+			fileName,
+		);
 		await writeFile(targetPath, Buffer.from(await file.arrayBuffer()), {
 			flag: "wx",
 		});
-		const chartId = previous?.id ?? randomUUID();
 		const uploadedAt = new Date().toISOString();
+		let result:
+			| { kind: "passed" }
+			| {
+					kind: "saved";
+					chartId: string;
+					previousFileName?: string;
+			  };
 		try {
 			const saveChart = database.transaction(() => {
-				if (previous) {
+				if (
 					database
+						.prepare(
+							"SELECT 1 FROM passed_charts WHERE music_id = ? AND difficulty = ?",
+						)
+						.get(musicId, difficulty)
+				) {
+					return { kind: "passed" as const };
+				}
+				const previous = database
+					.prepare(`
+						SELECT id, file_name AS fileName FROM meeting_charts
+						WHERE meeting_id = ? AND music_id = ? AND difficulty = ?
+					`)
+					.get(meetingId, musicId, difficulty) as
+					| { id: string; fileName: string }
+					| undefined;
+				const chartId = previous?.id ?? randomUUID();
+				if (previous) {
+					const update = database
 						.prepare(`
 						UPDATE meeting_charts
 						SET file_name = ?, description = ?, uploaded_at = ? WHERE id = ?
 					`)
 						.run(fileName, description, uploadedAt, chartId);
+					if (update.changes !== 1)
+						throw new Error("差し替え対象の譜面が見つかりません。");
 					database
 						.prepare("DELETE FROM comments WHERE meeting_chart_id = ?")
 						.run(chartId);
@@ -131,19 +146,31 @@ export async function POST(
 							uploadedAt,
 						);
 				}
+				return {
+					kind: "saved" as const,
+					chartId,
+					previousFileName: previous?.fileName,
+				};
 			});
-			saveChart();
+			result = saveChart();
 		} catch (error) {
 			await unlink(targetPath).catch(() => {});
 			throw error;
 		}
-		if (previous)
-			await unlink(path.join(chartDirectory, previous.fileName)).catch(
+		if (result.kind === "passed") {
+			await unlink(targetPath).catch(() => {});
+			return Response.json(
+				{ error: "合格済みの譜面は再アップロードできません。" },
+				{ status: 409 },
+			);
+		}
+		if (result.previousFileName)
+			await unlink(path.join(chartDirectory, result.previousFileName)).catch(
 				() => {},
 			);
 		return Response.json(
-			{ id: chartId, musicId, difficulty, description, uploadedAt },
-			{ status: previous ? 200 : 201 },
+			{ id: result.chartId, musicId, difficulty, description, uploadedAt },
+			{ status: result.previousFileName ? 200 : 201 },
 		);
 	} catch (error) {
 		return Response.json(

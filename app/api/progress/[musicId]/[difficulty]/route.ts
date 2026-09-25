@@ -28,12 +28,26 @@ async function updatePass(
 					{ error: "譜面がカタログにありません。" },
 					{ status: 404 },
 				);
-			database
-				.prepare(`
+			const result = database.transaction(() => {
+				const chartExists = database
+					.prepare(
+						"SELECT 1 FROM meeting_charts WHERE music_id = ? AND difficulty = ?",
+					)
+					.get(musicId, difficulty);
+				if (!chartExists) return false;
+				database
+					.prepare(`
 				INSERT INTO passed_charts (music_id, difficulty, passed_at) VALUES (?, ?, ?)
 				ON CONFLICT(music_id, difficulty) DO UPDATE SET passed_at = excluded.passed_at
 			`)
-				.run(musicId, difficulty, new Date().toISOString());
+					.run(musicId, difficulty, new Date().toISOString());
+				return true;
+			});
+			if (!result())
+				return Response.json(
+					{ error: "合格にする譜面が見つかりません。" },
+					{ status: 404 },
+				);
 		} else {
 			database
 				.prepare(

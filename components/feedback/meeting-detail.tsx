@@ -180,8 +180,8 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 			<section className="rounded-2xl border border-slate-200 bg-white p-6">
 				<h2 className="text-xl font-semibold">譜面を追加する</h2>
 				<p className="mt-2 text-sm leading-6 text-slate-600">
-					合格済みの譜面は選択肢に表示されません。対応する譜面ファイルは SUS
-					形式です。
+					合格済みの譜面は選択肢に表示されません。対応形式は C2S、SUS、UGC
+					です。
 				</p>
 				<form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={uploadChart}>
 					<label className="text-sm font-medium text-slate-700">
@@ -206,7 +206,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 					<label className="text-sm font-medium text-slate-700">
 						譜面ファイル
 						<input
-							accept=".sus"
+							accept=".c2s,.sus,.ugc"
 							className="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
 							onChange={(event) => setFile(event.target.files?.[0])}
 							required
