@@ -11,6 +11,7 @@
 # Next.js
 /.next/
 /out/
+/public/wasm/
 
 # production
 /build
@@ -32,3 +33,7 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Rust and generated WebAssembly
+/wasm/chart-parser/target/
+/wasm/chart-parser/pkg/

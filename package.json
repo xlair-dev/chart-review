@@ -4,8 +4,9 @@
 	"private": true,
 	"packageManager": "pnpm@12.5.1",
 	"scripts": {
-		"dev": "next dev",
-		"build": "next build",
+		"build:chart-parser": "sh scripts/build-chart-parser.sh",
+		"dev": "pnpm build:chart-parser && next dev",
+		"build": "pnpm build:chart-parser && next build",
 		"start": "next start",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write ."

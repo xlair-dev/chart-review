@@ -1,9 +1,12 @@
+import Link from "next/link";
+
 const workspaces = [
 	{
 		number: "01",
 		title: "譜面ビューワー",
 		description: "譜面を読み込み、再生しながら確認する。",
-		status: "準備中",
+		status: "ローカル解析",
+		href: "/viewer",
 	},
 	{
 		number: "02",
@@ -64,6 +67,17 @@ export default function Home() {
 						<p className="mt-3 text-sm leading-6 text-slate-600">
 							{workspace.description}
 						</p>
+						{workspace.href && (
+							<Link
+								className="mt-7 inline-flex text-sm font-medium text-sky-800 hover:text-sky-600"
+								href={workspace.href}
+							>
+								開く{" "}
+								<span aria-hidden="true" className="ml-2">
+									→
+								</span>
+							</Link>
+						)}
 					</article>
 				))}
 			</section>
