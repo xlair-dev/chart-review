@@ -181,32 +181,48 @@ function paintPlayfield(
 	context.fillStyle = "#020617";
 	context.fillRect(0, 0, width, height);
 	const horizonY = height * 0.24;
-	const horizonWidth = width * 0.3;
-	const floorWidth = width * 0.9;
+	const floorY = height * 0.86;
+	const horizonWidth = width * 0.34;
+	const floorWidth = width * 0.94;
 	const center = width / 2;
-	context.fillStyle = "#172554";
-	context.beginPath();
-	context.moveTo(center - horizonWidth / 2, horizonY);
-	context.lineTo(center + horizonWidth / 2, horizonY);
-	context.lineTo(center + floorWidth / 2, height * 0.86);
-	context.lineTo(center - floorWidth / 2, height * 0.86);
-	context.closePath();
-	context.fill();
+	const laneX = (lane: number, y: number) => {
+		const depth = (y - horizonY) / (floorY - horizonY);
+		const fieldWidth = horizonWidth + (floorWidth - horizonWidth) * depth;
+		return center - fieldWidth / 2 + (fieldWidth * lane) / 20;
+	};
+	const drawLaneBand = (startLane: number, endLane: number, color: string) => {
+		context.fillStyle = color;
+		context.beginPath();
+		context.moveTo(laneX(startLane, horizonY), horizonY);
+		context.lineTo(laneX(endLane, horizonY), horizonY);
+		context.lineTo(laneX(endLane, floorY), floorY);
+		context.lineTo(laneX(startLane, floorY), floorY);
+		context.closePath();
+		context.fill();
+	};
+	drawLaneBand(0, 20, "#0f172a");
+	drawLaneBand(2, 18, "#172554");
+	for (const [startLane, endLane, color] of [
+		[0, 1, "#312e81"],
+		[1, 2, "#1e3a8a"],
+		[18, 19, "#1e3a8a"],
+		[19, 20, "#312e81"],
+	] as const) {
+		drawLaneBand(startLane, endLane, color);
+	}
 	context.strokeStyle = "#475569";
 	context.lineWidth = 1;
-	for (let lane = 0; lane <= 16; lane++) {
-		const topX = center - horizonWidth / 2 + (horizonWidth * lane) / 16;
-		const bottomX = center - floorWidth / 2 + (floorWidth * lane) / 16;
+	for (let lane = 0; lane <= 20; lane++) {
 		context.beginPath();
-		context.moveTo(topX, horizonY);
-		context.lineTo(bottomX, height * 0.86);
+		context.moveTo(laneX(lane, horizonY), horizonY);
+		context.lineTo(laneX(lane, floorY), floorY);
 		context.stroke();
 	}
 	context.strokeStyle = "#e2e8f0";
 	context.lineWidth = 3;
 	context.beginPath();
-	context.moveTo(center - floorWidth / 2 - 12, height * 0.86);
-	context.lineTo(center + floorWidth / 2 + 12, height * 0.86);
+	context.moveTo(laneX(0, floorY) - 8, floorY);
+	context.lineTo(laneX(20, floorY) + 8, floorY);
 	context.stroke();
 
 	const approachBeats = 8;
@@ -214,10 +230,11 @@ function paintPlayfield(
 		const distance = positionValue(note.position) - currentBeat;
 		if (distance < -1 || distance > approachBeats) continue;
 		const depth = 1 - distance / approachBeats;
-		const y = horizonY + depth ** 1.7 * (height * 0.62);
-		if (y > height * 0.86 || y < horizonY) continue;
+		const y = horizonY + depth ** 1.7 * (floorY - horizonY);
+		if (y > floorY || y < horizonY) continue;
 		const [startLane, endLane] = laneRange(note.lane);
-		const perspective = y / height;
+		const noteWidth = Math.max(4, laneX(endLane, y) - laneX(startLane, y) - 4);
+		const perspective = (y - horizonY) / (floorY - horizonY);
 		const points = pathPoints(note);
 		if (points.length > 1) {
 			context.strokeStyle = noteColor(note);
@@ -230,28 +247,16 @@ function paintPlayfield(
 				const pointDistance = point.position - currentBeat;
 				if (pointDistance < -1 || pointDistance > approachBeats) return;
 				const pointDepth = 1 - pointDistance / approachBeats;
-				const pointY = horizonY + pointDepth ** 1.7 * (height * 0.62);
+				const pointY = horizonY + pointDepth ** 1.7 * (floorY - horizonY);
 				const [pointStart, pointEnd] = laneRange(point.lane);
-				const pointX =
-					center +
-					(((pointStart + pointEnd) / 2 - 10) / 16) *
-						floorWidth *
-						(pointY / height);
+				const pointX = laneX((pointStart + pointEnd) / 2, pointY);
 				if (index === 0) context.moveTo(pointX, pointY);
 				else context.lineTo(pointX, pointY);
 			});
 			context.stroke();
 		}
-		const gameWidth =
-			floorWidth *
-			(startLane === 0 || endLane === 20
-				? 0.04
-				: 0.05 + (endLane - startLane) * 0.018) *
-			perspective;
-		const gameX =
-			center +
-			(((startLane + endLane) / 2 - 10) / 16) * floorWidth * perspective -
-			gameWidth / 2;
+		const gameX = laneX(startLane, y) + 2;
+		const gameWidth = noteWidth;
 		context.fillStyle = noteColor(note);
 		context.fillRect(
 			gameX,
