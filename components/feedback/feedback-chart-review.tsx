@@ -153,18 +153,22 @@ export function FeedbackChartReview({
 		const next = !isPassed;
 		if (!chartRecord) return;
 		setIsUpdatingPass(true);
-		const response = await fetch(
-			`/api/progress/${chartRecord.musicId}/${chartRecord.difficulty}`,
-			{ method: next ? "PUT" : "DELETE" },
-		);
-		if (!response.ok) {
-			setError("合格状況を更新できませんでした。");
+		try {
+			const response = await fetch(
+				`/api/progress/${chartRecord.musicId}/${chartRecord.difficulty}`,
+				{ method: next ? "PUT" : "DELETE" },
+			);
+			if (!response.ok) {
+				setError("合格状況を更新できませんでした。");
+				return;
+			}
+			setIsPassed(next);
+			setIsPassConfirmationOpen(false);
+		} catch {
+			setError("合格状況を更新できませんでした。通信状態を確認してください。");
+		} finally {
 			setIsUpdatingPass(false);
-			return;
 		}
-		setIsPassed(next);
-		setIsPassConfirmationOpen(false);
-		setIsUpdatingPass(false);
 	}
 
 	if (!chart || !chartRecord || !music) {

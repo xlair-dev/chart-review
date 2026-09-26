@@ -53,24 +53,30 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 
 	const loadData = useCallback(async () => {
 		setIsLoading(true);
-		const responses = await Promise.all([
-			fetch(`/api/meetings/${meetingId}`, { cache: "no-store" }),
-			fetch(`/api/meetings/${meetingId}/charts`, { cache: "no-store" }),
-			fetch("/api/catalog", { cache: "no-store" }),
-			fetch("/api/progress", { cache: "no-store" }),
-		]);
-		const failed = responses.find((response) => !response.ok);
-		if (failed) {
-			setError(await errorMessage(failed));
+		try {
+			const responses = await Promise.all([
+				fetch(`/api/meetings/${meetingId}`, { cache: "no-store" }),
+				fetch(`/api/meetings/${meetingId}/charts`, { cache: "no-store" }),
+				fetch("/api/catalog", { cache: "no-store" }),
+				fetch("/api/progress", { cache: "no-store" }),
+			]);
+			const failed = responses.find((response) => !response.ok);
+			if (failed) {
+				setError(await errorMessage(failed));
+				return;
+			}
+			setMeeting((await responses[0].json()) as Meeting);
+			setCharts((await responses[1].json()) as MeetingChart[]);
+			setCatalog((await responses[2].json()) as CatalogItem[]);
+			setPassed(((await responses[3].json()) as ProgressData).passed);
+			setError("");
+		} catch {
+			setError(
+				"FB 会の情報を読み込めませんでした。通信状態を確認してください。",
+			);
+		} finally {
 			setIsLoading(false);
-			return;
 		}
-		setMeeting((await responses[0].json()) as Meeting);
-		setCharts((await responses[1].json()) as MeetingChart[]);
-		setCatalog((await responses[2].json()) as CatalogItem[]);
-		setPassed(((await responses[3].json()) as ProgressData).passed);
-		setError("");
-		setIsLoading(false);
 	}, [meetingId]);
 
 	useEffect(() => {
@@ -121,56 +127,70 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 		form.set("difficulty", chosenSheet.sheet.difficulty);
 		form.set("description", description);
 		form.set("file", file);
-		const response = await fetch(`/api/meetings/${meetingId}/charts`, {
-			method: "POST",
-			body: form,
-		});
-		if (!response.ok) {
-			setError(await errorMessage(response));
+		try {
+			const response = await fetch(`/api/meetings/${meetingId}/charts`, {
+				method: "POST",
+				body: form,
+			});
+			if (!response.ok) {
+				setError(await errorMessage(response));
+				return;
+			}
+			setDescription("");
+			setFile(undefined);
+			if (fileInput.current) fileInput.current.value = "";
+			await loadData();
+		} catch {
+			setError(
+				"譜面をアップロードできませんでした。通信状態を確認してください。",
+			);
+		} finally {
 			setIsSaving(false);
-			return;
 		}
-		setDescription("");
-		setFile(undefined);
-		if (fileInput.current) fileInput.current.value = "";
-		await loadData();
-		setIsSaving(false);
 	}
 
 	async function deleteChart(chart: MeetingChart) {
 		setIsDeletingChart(true);
-		const response = await fetch(
-			`/api/meetings/${meetingId}/charts/${chart.id}`,
-			{ method: "DELETE" },
-		);
-		if (!response.ok) {
-			setError(await errorMessage(response));
+		try {
+			const response = await fetch(
+				`/api/meetings/${meetingId}/charts/${chart.id}`,
+				{ method: "DELETE" },
+			);
+			if (!response.ok) {
+				setError(await errorMessage(response));
+				return;
+			}
+			setChartPendingDeletion(undefined);
+			await loadData();
+		} catch {
+			setError("譜面を削除できませんでした。通信状態を確認してください。");
+		} finally {
 			setIsDeletingChart(false);
-			return;
 		}
-		setChartPendingDeletion(undefined);
-		await loadData();
-		setIsDeletingChart(false);
 	}
 
 	async function saveDescription(chart: MeetingChart) {
 		setIsSavingDescription(true);
-		const response = await fetch(
-			`/api/meetings/${meetingId}/charts/${chart.id}`,
-			{
-				method: "PATCH",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ description: descriptionDraft }),
-			},
-		);
-		if (!response.ok) {
-			setError(await errorMessage(response));
+		try {
+			const response = await fetch(
+				`/api/meetings/${meetingId}/charts/${chart.id}`,
+				{
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ description: descriptionDraft }),
+				},
+			);
+			if (!response.ok) {
+				setError(await errorMessage(response));
+				return;
+			}
+			setEditingDescriptionId(undefined);
+			await loadData();
+		} catch {
+			setError("説明を保存できませんでした。通信状態を確認してください。");
+		} finally {
 			setIsSavingDescription(false);
-			return;
 		}
-		setEditingDescriptionId(undefined);
-		setIsSavingDescription(false);
-		await loadData();
 	}
 
 	if (isLoading)

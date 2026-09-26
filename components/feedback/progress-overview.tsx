@@ -50,33 +50,36 @@ export function ProgressOverview() {
 		if (!pendingUndo) return;
 		const target = pendingUndo;
 		setIsUndoing(true);
-		const response = await fetch(
-			`/api/progress/${target.musicId}/${target.difficulty}`,
-			{
-				method: "DELETE",
-			},
-		);
-		if (response.ok) {
-			setProgress(
-				(current) =>
-					current && {
-						...current,
-						passed: current.passed.filter(
-							(sheet) =>
-								sheet.musicId !== target.musicId ||
-								sheet.difficulty !== target.difficulty,
-						),
-						passedCount: Math.max(0, current.passedCount - 1),
-					},
+		try {
+			const response = await fetch(
+				`/api/progress/${target.musicId}/${target.difficulty}`,
+				{ method: "DELETE" },
 			);
-			setPendingUndo(undefined);
-		} else {
-			const body = (await response.json().catch(() => ({}))) as {
-				error?: string;
-			};
-			setError(body.error ?? "合格を取り消せませんでした。");
+			if (response.ok) {
+				setProgress(
+					(current) =>
+						current && {
+							...current,
+							passed: current.passed.filter(
+								(sheet) =>
+									sheet.musicId !== target.musicId ||
+									sheet.difficulty !== target.difficulty,
+							),
+							passedCount: Math.max(0, current.passedCount - 1),
+						},
+				);
+				setPendingUndo(undefined);
+			} else {
+				const body = (await response.json().catch(() => ({}))) as {
+					error?: string;
+				};
+				setError(body.error ?? "合格を取り消せませんでした。");
+			}
+		} catch {
+			setError("合格を取り消せませんでした。通信状態を確認してください。");
+		} finally {
+			setIsUndoing(false);
 		}
-		setIsUndoing(false);
 	}
 
 	const totalCount = progress?.totalCount ?? 0;
