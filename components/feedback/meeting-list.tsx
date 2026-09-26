@@ -25,15 +25,21 @@ export function MeetingList() {
 
 	const reloadMeetings = useCallback(async () => {
 		setIsLoading(true);
-		const response = await fetch("/api/meetings", { cache: "no-store" });
-		if (!response.ok) {
-			setError(await responseError(response));
+		try {
+			const response = await fetch("/api/meetings", { cache: "no-store" });
+			if (!response.ok) {
+				setError(await responseError(response));
+				return;
+			}
+			setMeetings((await response.json()) as MeetingSummary[]);
+			setError("");
+		} catch {
+			setError(
+				"FB 会の一覧を読み込めませんでした。通信状態を確認してください。",
+			);
+		} finally {
 			setIsLoading(false);
-			return;
 		}
-		setMeetings((await response.json()) as MeetingSummary[]);
-		setError("");
-		setIsLoading(false);
 	}, []);
 
 	useEffect(() => {
@@ -43,18 +49,22 @@ export function MeetingList() {
 	async function createMeeting(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		setIsCreating(true);
-		const response = await fetch("/api/meetings", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ heldOn }),
-		});
-		if (!response.ok) {
-			setError(await responseError(response));
+		try {
+			const response = await fetch("/api/meetings", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ heldOn }),
+			});
+			if (!response.ok) {
+				setError(await responseError(response));
+				return;
+			}
+			await reloadMeetings();
+		} catch {
+			setError("FB 会を作成できませんでした。通信状態を確認してください。");
+		} finally {
 			setIsCreating(false);
-			return;
 		}
-		await reloadMeetings();
-		setIsCreating(false);
 	}
 
 	return (
