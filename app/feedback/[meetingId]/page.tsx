@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MeetingDetail } from "@/components/feedback/meeting-detail";
+import { WorkspaceTabs } from "@/components/workspace-tabs";
 
 export default async function MeetingPage({
 	params,
@@ -21,6 +22,7 @@ export default async function MeetingPage({
 					すべての会
 				</Link>
 			</header>
+			<WorkspaceTabs />
 			<MeetingDetail meetingId={meetingId} />
 		</main>
 	);
