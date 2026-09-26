@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import type { CatalogItem } from "@/lib/catalog-model";
 
 interface ProgressData {
@@ -20,6 +21,10 @@ export function ProgressOverview() {
 	const [progress, setProgress] = useState<ProgressData>();
 	const [catalog, setCatalog] = useState<CatalogItem[]>([]);
 	const [error, setError] = useState("");
+	const [pendingUndo, setPendingUndo] = useState<
+		ProgressData["passed"][number] | undefined
+	>();
+	const [isUndoing, setIsUndoing] = useState(false);
 
 	useEffect(() => {
 		Promise.all([
@@ -41,11 +46,16 @@ export function ProgressOverview() {
 		});
 	}, []);
 
-	async function undoPass(musicId: string, difficulty: string) {
-		if (!window.confirm("この譜面の合格を取り消しますか？")) return;
-		const response = await fetch(`/api/progress/${musicId}/${difficulty}`, {
-			method: "DELETE",
-		});
+	async function undoPass() {
+		if (!pendingUndo) return;
+		const target = pendingUndo;
+		setIsUndoing(true);
+		const response = await fetch(
+			`/api/progress/${target.musicId}/${target.difficulty}`,
+			{
+				method: "DELETE",
+			},
+		);
 		if (response.ok) {
 			setProgress(
 				(current) =>
@@ -53,12 +63,20 @@ export function ProgressOverview() {
 						...current,
 						passed: current.passed.filter(
 							(sheet) =>
-								sheet.musicId !== musicId || sheet.difficulty !== difficulty,
+								sheet.musicId !== target.musicId ||
+								sheet.difficulty !== target.difficulty,
 						),
 						passedCount: Math.max(0, current.passedCount - 1),
 					},
 			);
+			setPendingUndo(undefined);
+		} else {
+			const body = (await response.json().catch(() => ({}))) as {
+				error?: string;
+			};
+			setError(body.error ?? "合格を取り消せませんでした。");
 		}
+		setIsUndoing(false);
 	}
 
 	const totalCount = progress?.totalCount ?? 0;
@@ -82,6 +100,15 @@ export function ProgressOverview() {
 				/>
 			</div>
 			{error && <p className="mt-3 text-sm text-rose-700">{error}</p>}
+			<ConfirmationDialog
+				confirmLabel="合格を取り消す"
+				description="合格状態を取り消し、全体の進捗と譜面追加候補に反映します。"
+				isPending={isUndoing}
+				onCancel={() => setPendingUndo(undefined)}
+				onConfirm={() => void undoPass()}
+				open={Boolean(pendingUndo)}
+				title="合格を取り消しますか？"
+			/>
 			{progress?.passed.length ? (
 				<details className="mt-4">
 					<summary className="cursor-pointer text-sm font-medium text-slate-700">
@@ -116,9 +143,7 @@ export function ProgressOverview() {
 									)}
 									<button
 										className="text-xs text-slate-500 hover:text-rose-700"
-										onClick={() =>
-											void undoPass(passed.musicId, passed.difficulty)
-										}
+										onClick={() => setPendingUndo(passed)}
 										type="button"
 									>
 										合格を取り消す

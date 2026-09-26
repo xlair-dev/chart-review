@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { DisplayNameField } from "@/components/display-name-field";
 import { ChartPlayback } from "@/components/viewer/chart-playback";
 import type { CatalogItem } from "@/lib/catalog-model";
@@ -40,6 +41,8 @@ export function FeedbackChartReview({
 	const [position, setPosition] = useState(0);
 	const [commentBody, setCommentBody] = useState("");
 	const [isPassed, setIsPassed] = useState(false);
+	const [isPassConfirmationOpen, setIsPassConfirmationOpen] = useState(false);
+	const [isUpdatingPass, setIsUpdatingPass] = useState(false);
 	const [error, setError] = useState("");
 	const { displayName } = useDisplayName();
 
@@ -148,17 +151,20 @@ export function FeedbackChartReview({
 
 	async function togglePassed() {
 		const next = !isPassed;
-		if (next && !window.confirm("この譜面を合格として記録しますか？")) return;
 		if (!chartRecord) return;
+		setIsUpdatingPass(true);
 		const response = await fetch(
 			`/api/progress/${chartRecord.musicId}/${chartRecord.difficulty}`,
 			{ method: next ? "PUT" : "DELETE" },
 		);
 		if (!response.ok) {
 			setError("合格状況を更新できませんでした。");
+			setIsUpdatingPass(false);
 			return;
 		}
 		setIsPassed(next);
+		setIsPassConfirmationOpen(false);
+		setIsUpdatingPass(false);
 	}
 
 	if (!chart || !chartRecord || !music) {
@@ -195,12 +201,25 @@ export function FeedbackChartReview({
 							? "rounded-lg border border-emerald-600 px-4 py-2 text-sm font-medium text-emerald-800"
 							: "rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white"
 					}
-					onClick={() => void togglePassed()}
+					onClick={() => setIsPassConfirmationOpen(true)}
 					type="button"
 				>
 					{isPassed ? "合格を取り消す" : "合格にする"}
 				</button>
 			</div>
+			<ConfirmationDialog
+				confirmLabel={isPassed ? "合格を取り消す" : "合格にする"}
+				description={
+					isPassed
+						? "この譜面の合格を取り消します。進捗に反映されます。"
+						: "この譜面を合格として記録し、以後の譜面追加候補から除外します。"
+				}
+				isPending={isUpdatingPass}
+				onCancel={() => setIsPassConfirmationOpen(false)}
+				onConfirm={() => void togglePassed()}
+				open={isPassConfirmationOpen}
+				title={isPassed ? "合格を取り消しますか？" : "譜面を合格にしますか？"}
+			/>
 			{error && <p className="mb-4 text-sm text-rose-700">{error}</p>}
 			<div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_21rem]">
 				<ChartPlayback
