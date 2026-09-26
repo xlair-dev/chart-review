@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import type { CatalogItem, CatalogSheet } from "@/lib/catalog-model";
 
 interface Meeting {
@@ -42,6 +43,9 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 	const [isSaving, setIsSaving] = useState(false);
 	const [isReplaceConfirmationOpen, setIsReplaceConfirmationOpen] =
 		useState(false);
+	const [chartPendingDeletion, setChartPendingDeletion] =
+		useState<MeetingChart>();
+	const [isDeletingChart, setIsDeletingChart] = useState(false);
 	const [editingDescriptionId, setEditingDescriptionId] = useState<string>();
 	const [descriptionDraft, setDescriptionDraft] = useState("");
 	const [isSavingDescription, setIsSavingDescription] = useState(false);
@@ -134,19 +138,19 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 	}
 
 	async function deleteChart(chart: MeetingChart) {
-		if (
-			!window.confirm("この会から譜面を削除しますか？コメントも削除されます。")
-		)
-			return;
+		setIsDeletingChart(true);
 		const response = await fetch(
 			`/api/meetings/${meetingId}/charts/${chart.id}`,
 			{ method: "DELETE" },
 		);
 		if (!response.ok) {
 			setError(await errorMessage(response));
+			setIsDeletingChart(false);
 			return;
 		}
+		setChartPendingDeletion(undefined);
 		await loadData();
+		setIsDeletingChart(false);
 	}
 
 	async function saveDescription(chart: MeetingChart) {
@@ -264,40 +268,26 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 				{error && <p className="mt-4 text-sm text-rose-700">{error}</p>}
 			</section>
 
-			{isReplaceConfirmationOpen && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-					<section
-						aria-labelledby="replace-chart-title"
-						aria-modal="true"
-						className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-						role="alertdialog"
-					>
-						<h2 className="text-lg font-semibold" id="replace-chart-title">
-							譜面を差し替えますか？
-						</h2>
-						<p className="mt-3 text-sm leading-6 text-slate-600">
-							譜面を差し替えると、この譜面に付いたコメントは削除されます。
-						</p>
-						<div className="mt-6 flex justify-end gap-3">
-							<button
-								className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
-								onClick={() => setIsReplaceConfirmationOpen(false)}
-								type="button"
-							>
-								キャンセル
-							</button>
-							<button
-								className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-								disabled={isSaving}
-								onClick={() => void saveChart()}
-								type="button"
-							>
-								譜面を差し替える
-							</button>
-						</div>
-					</section>
-				</div>
-			)}
+			<ConfirmationDialog
+				confirmLabel="譜面を差し替える"
+				description="譜面を差し替えると、この譜面に付いたコメントは削除されます。"
+				isPending={isSaving}
+				onCancel={() => setIsReplaceConfirmationOpen(false)}
+				onConfirm={() => void saveChart()}
+				open={isReplaceConfirmationOpen}
+				title="譜面を差し替えますか？"
+			/>
+			<ConfirmationDialog
+				confirmLabel="譜面とコメントを削除"
+				description="この会から譜面を削除します。譜面に付いたコメントも削除されます。"
+				isPending={isDeletingChart}
+				onCancel={() => setChartPendingDeletion(undefined)}
+				onConfirm={() =>
+					chartPendingDeletion && void deleteChart(chartPendingDeletion)
+				}
+				open={Boolean(chartPendingDeletion)}
+				title="譜面を削除しますか？"
+			/>
 
 			<section className="mt-10">
 				<div className="mb-4 flex items-baseline justify-between gap-4">
@@ -394,7 +384,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 										) && (
 											<button
 												className="text-sm text-slate-500 hover:text-rose-700"
-												onClick={() => void deleteChart(chart)}
+												onClick={() => setChartPendingDeletion(chart)}
 												type="button"
 											>
 												削除
