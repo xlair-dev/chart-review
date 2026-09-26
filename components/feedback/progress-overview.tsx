@@ -30,20 +30,24 @@ export function ProgressOverview() {
 		Promise.all([
 			fetch("/api/progress", { cache: "no-store" }),
 			fetch("/api/catalog", { cache: "no-store" }),
-		]).then(async ([progressResponse, catalogResponse]) => {
-			if (!progressResponse.ok || !catalogResponse.ok) {
-				const response = !catalogResponse.ok
-					? catalogResponse
-					: progressResponse;
-				const body = (await response.json().catch(() => ({}))) as {
-					error?: string;
-				};
-				setError(body.error ?? "進捗を読み込めませんでした。");
-				return;
-			}
-			setProgress((await progressResponse.json()) as ProgressData);
-			setCatalog((await catalogResponse.json()) as CatalogItem[]);
-		});
+		])
+			.then(async ([progressResponse, catalogResponse]) => {
+				if (!progressResponse.ok || !catalogResponse.ok) {
+					const response = !catalogResponse.ok
+						? catalogResponse
+						: progressResponse;
+					const body = (await response.json().catch(() => ({}))) as {
+						error?: string;
+					};
+					setError(body.error ?? "進捗を読み込めませんでした。");
+					return;
+				}
+				setProgress((await progressResponse.json()) as ProgressData);
+				setCatalog((await catalogResponse.json()) as CatalogItem[]);
+			})
+			.catch(() => {
+				setError("進捗を読み込めませんでした。通信状態を確認してください。");
+			});
 	}, []);
 
 	async function undoPass() {
