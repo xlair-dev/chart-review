@@ -185,10 +185,22 @@ function paintPlayfield(
 	const horizonWidth = width * 0.34;
 	const floorWidth = width * 0.94;
 	const center = width / 2;
-	const laneX = (lane: number, y: number) => {
+	const baseLaneX = (lane: number, y: number) => {
 		const depth = (y - horizonY) / (floorY - horizonY);
 		const fieldWidth = horizonWidth + (floorWidth - horizonWidth) * depth;
 		return center - fieldWidth / 2 + (fieldWidth * lane) / 20;
+	};
+	const laneX = (lane: number, y: number) => {
+		const depth = Math.max(
+			0,
+			Math.min(1, (y - horizonY) / (floorY - horizonY)),
+		);
+		const sideLaneWidth = (baseLaneX(2, y) - baseLaneX(1, y)) * 0.45 * depth;
+		if (lane === 0) return baseLaneX(lane, y) - sideLaneWidth * 1.8;
+		if (lane === 1) return baseLaneX(lane, y) - sideLaneWidth;
+		if (lane === 19) return baseLaneX(lane, y) + sideLaneWidth;
+		if (lane === 20) return baseLaneX(lane, y) + sideLaneWidth * 1.8;
+		return baseLaneX(lane, y);
 	};
 	const drawLaneBand = (startLane: number, endLane: number, color: string) => {
 		context.fillStyle = color;
