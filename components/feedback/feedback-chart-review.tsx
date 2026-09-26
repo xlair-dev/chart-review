@@ -124,47 +124,55 @@ export function FeedbackChartReview({
 
 	async function addComment(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		const response = await fetch(
-			`/api/meetings/${meetingId}/charts/${chartId}/comments`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					displayName,
-					position: positionFromValue(position),
-					body: commentBody,
-				}),
-			},
-		);
-		if (!response.ok) {
-			const result = (await response.json().catch(() => ({}))) as {
-				error?: string;
-			};
-			setError(result.error ?? "コメントを保存できませんでした。");
-			return;
+		try {
+			const response = await fetch(
+				`/api/meetings/${meetingId}/charts/${chartId}/comments`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						displayName,
+						position: positionFromValue(position),
+						body: commentBody,
+					}),
+				},
+			);
+			if (!response.ok) {
+				const result = (await response.json().catch(() => ({}))) as {
+					error?: string;
+				};
+				setError(result.error ?? "コメントを保存できませんでした。");
+				return;
+			}
+			const comment = (await response.json()) as Comment;
+			setComments((current) => [...current, comment]);
+			setCommentBody("");
+			setError("");
+		} catch {
+			setError("コメントを保存できませんでした。通信状態を確認してください。");
 		}
-		const comment = (await response.json()) as Comment;
-		setComments((current) => [...current, comment]);
-		setCommentBody("");
-		setError("");
 	}
 
 	async function togglePassed() {
 		const next = !isPassed;
 		if (!chartRecord) return;
 		setIsUpdatingPass(true);
-		const response = await fetch(
-			`/api/progress/${chartRecord.musicId}/${chartRecord.difficulty}`,
-			{ method: next ? "PUT" : "DELETE" },
-		);
-		if (!response.ok) {
-			setError("合格状況を更新できませんでした。");
+		try {
+			const response = await fetch(
+				`/api/progress/${chartRecord.musicId}/${chartRecord.difficulty}`,
+				{ method: next ? "PUT" : "DELETE" },
+			);
+			if (!response.ok) {
+				setError("合格状況を更新できませんでした。");
+				return;
+			}
+			setIsPassed(next);
+			setIsPassConfirmationOpen(false);
+		} catch {
+			setError("合格状況を更新できませんでした。通信状態を確認してください。");
+		} finally {
 			setIsUpdatingPass(false);
-			return;
 		}
-		setIsPassed(next);
-		setIsPassConfirmationOpen(false);
-		setIsUpdatingPass(false);
 	}
 
 	if (!chart || !chartRecord || !music) {
