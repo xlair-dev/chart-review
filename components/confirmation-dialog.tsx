@@ -34,10 +34,10 @@ export function ConfirmationDialog({
 		<dialog
 			aria-labelledby={titleId}
 			aria-describedby={descriptionId}
-			className="m-auto w-full max-w-md bg-transparent p-0 text-slate-900 backdrop:bg-slate-950/50"
+			className="m-auto w-full max-w-md border-0 bg-transparent p-0 text-slate-900 backdrop:bg-slate-950/50"
 			onCancel={(event) => {
 				event.preventDefault();
-				onCancel();
+				if (!isPending) onCancel();
 			}}
 			ref={dialog}
 			role="alertdialog"
