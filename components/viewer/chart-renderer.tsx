@@ -335,6 +335,7 @@ export function ChartRenderer({
 }) {
 	const sheet = useRef<HTMLCanvasElement>(null);
 	const playfield = useRef<HTMLCanvasElement>(null);
+	const programmaticScrollTop = useRef<number | undefined>(undefined);
 	const [localPosition, setLocalPosition] = useState(0);
 	const currentBeat = position ?? localPosition;
 	const end = chartEnd(chart);
@@ -359,8 +360,10 @@ export function ChartRenderer({
 		if (!canvas || !viewport) return;
 		const contentHeight = canvas.clientHeight - viewport.clientHeight;
 		const scrollTop = Math.max(0, (position / end) * contentHeight);
-		if (Math.abs(viewport.scrollTop - scrollTop) > 2)
+		if (Math.abs(viewport.scrollTop - scrollTop) > 2) {
+			programmaticScrollTop.current = scrollTop;
 			viewport.scrollTop = scrollTop;
+		}
 	}, [position, end]);
 
 	function changePosition(beat: number) {
@@ -389,6 +392,14 @@ export function ChartRenderer({
 						const canvas = sheet.current;
 						if (!canvas) return;
 						const contentHeight = canvas.clientHeight - viewport.clientHeight;
+						const expectedScrollTop = programmaticScrollTop.current;
+						programmaticScrollTop.current = undefined;
+						if (
+							expectedScrollTop !== undefined &&
+							Math.abs(viewport.scrollTop - expectedScrollTop) <= 2
+						) {
+							return;
+						}
 						const beat = (viewport.scrollTop / contentHeight) * end;
 						changePosition(Math.max(0, Math.min(end, beat)));
 					}}
