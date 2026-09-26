@@ -226,15 +226,60 @@ function paintPlayfield(
 	context.stroke();
 
 	const approachBeats = 8;
+	const yAtBeat = (beat: number) => {
+		const depth = 1 - (beat - currentBeat) / approachBeats;
+		return horizonY + depth ** 1.7 * (floorY - horizonY);
+	};
 	for (const note of chart.notes) {
-		const distance = positionValue(note.position) - currentBeat;
-		if (distance < -1 || distance > approachBeats) continue;
-		const depth = 1 - distance / approachBeats;
-		const y = horizonY + depth ** 1.7 * (floorY - horizonY);
-		if (y > floorY || y < horizonY) continue;
+		const notePosition = positionValue(note.position);
+		const distance = notePosition - currentBeat;
+		const sustainEnd = "end" in note.kind ? positionValue(note.kind.end) : null;
+		const visibleEnd = sustainEnd ?? notePosition;
+		if (visibleEnd < currentBeat - 1 || distance > approachBeats) continue;
 		const [startLane, endLane] = laneRange(note.lane);
-		const noteWidth = Math.max(4, laneX(endLane, y) - laneX(startLane, y) - 4);
-		const perspective = (y - horizonY) / (floorY - horizonY);
+		const headIsVisible = distance >= -1;
+		const headY = Math.max(horizonY, Math.min(floorY, yAtBeat(notePosition)));
+		const headWidth = Math.max(
+			4,
+			laneX(endLane, headY) - laneX(startLane, headY) - 4,
+		);
+		if (sustainEnd !== null && visibleEnd > notePosition) {
+			const sustainStartY = Math.max(
+				horizonY,
+				Math.min(floorY, yAtBeat(Math.max(notePosition, currentBeat - 1))),
+			);
+			const sustainEndY = Math.max(
+				horizonY,
+				Math.min(
+					floorY,
+					yAtBeat(Math.min(visibleEnd, currentBeat + approachBeats)),
+				),
+			);
+			const sustainWidthAt = (y: number) =>
+				Math.max(4, laneX(endLane, y) - laneX(startLane, y) - 4) * 0.38;
+			const startCenter =
+				(laneX(startLane, sustainStartY) + laneX(endLane, sustainStartY)) / 2;
+			const endCenter =
+				(laneX(startLane, sustainEndY) + laneX(endLane, sustainEndY)) / 2;
+			context.fillStyle = noteColor(note);
+			context.globalAlpha = 0.58;
+			context.beginPath();
+			context.moveTo(
+				startCenter - sustainWidthAt(sustainStartY) / 2,
+				sustainStartY,
+			);
+			context.lineTo(
+				startCenter + sustainWidthAt(sustainStartY) / 2,
+				sustainStartY,
+			);
+			context.lineTo(endCenter + sustainWidthAt(sustainEndY) / 2, sustainEndY);
+			context.lineTo(endCenter - sustainWidthAt(sustainEndY) / 2, sustainEndY);
+			context.closePath();
+			context.fill();
+			context.globalAlpha = 1;
+		}
+		if (!headIsVisible || headY >= floorY || headY < horizonY) continue;
+		const perspective = (headY - horizonY) / (floorY - horizonY);
 		const points = pathPoints(note);
 		if (points.length > 1) {
 			context.strokeStyle = noteColor(note);
@@ -255,12 +300,12 @@ function paintPlayfield(
 			});
 			context.stroke();
 		}
-		const gameX = laneX(startLane, y) + 2;
-		const gameWidth = noteWidth;
+		const gameX = laneX(startLane, headY) + 2;
+		const gameWidth = headWidth;
 		context.fillStyle = noteColor(note);
 		context.fillRect(
 			gameX,
-			y - 5 - perspective * 4,
+			headY - 5 - perspective * 4,
 			gameWidth,
 			7 + perspective * 8,
 		);
