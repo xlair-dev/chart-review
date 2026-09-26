@@ -18,8 +18,8 @@ export async function GET() {
 		const rows = database
 			.prepare(`
 			SELECT m.id, m.held_on AS heldOn, m.created_at AS createdAt,
-			       COALESCE(s.passed_count, ?1) AS passedCount,
-			       COALESCE(s.total_count, ?2) AS totalCount,
+			       COALESCE(s.passed_count, ?) AS passedCount,
+			       COALESCE(s.total_count, ?) AS totalCount,
 			       (SELECT COUNT(*) FROM meeting_charts c WHERE c.meeting_id = m.id) AS chartCount
 			FROM meetings m
 			LEFT JOIN meeting_progress_snapshots s ON s.meeting_id = m.id
