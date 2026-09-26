@@ -18,6 +18,7 @@ export type SideButton =
 export interface ChartData {
 	format: ChartFormat;
 	baseBpm: number | null;
+	audioOffsetSeconds: number | null;
 	priorityEnabled: boolean | null;
 	measureLengths: { measure: number; length: Position }[];
 	tempoChanges: { position: Position; bpm: number }[];

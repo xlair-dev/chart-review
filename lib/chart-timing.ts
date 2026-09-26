@@ -55,3 +55,20 @@ export function positionAtSeconds(chart: ChartData, seconds: number): number {
 	}
 	return 0;
 }
+
+/** Maps chart time to audio time using the SUS sign convention. */
+export function audioSecondsAtBeat(chart: ChartData, beat: number): number {
+	// HTMLMediaElement cannot seek before the beginning of the audio file.
+	return Math.max(
+		0,
+		secondsAtBeat(chart, beat) - (chart.audioOffsetSeconds ?? 0),
+	);
+}
+
+/** Maps audio file time to chart time using the SUS sign convention. */
+export function positionAtAudioSeconds(
+	chart: ChartData,
+	seconds: number,
+): number {
+	return positionAtSeconds(chart, seconds + (chart.audioOffsetSeconds ?? 0));
+}
