@@ -259,7 +259,10 @@ export function ChartPlayback({
 								position,
 							);
 						}}
-						onPause={stopPlaybackSync}
+						onPause={(event) => {
+							if (chartLeadIn.current && event.currentTarget.ended) return;
+							stopPlaybackSync();
+						}}
 						onPlay={startPlaybackSync}
 						onTimeUpdate={(event) => {
 							syncPositionFromAudio(event.currentTarget.currentTime);
