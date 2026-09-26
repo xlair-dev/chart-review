@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChartFileLoader } from "@/components/viewer/chart-file-loader";
+import { WorkspaceTabs } from "@/components/workspace-tabs";
 
 export default function ViewerPage() {
 	return (
@@ -14,6 +15,7 @@ export default function ViewerPage() {
 				</Link>
 				<span className="text-xs text-slate-500">譜面ビューワー</span>
 			</header>
+			<WorkspaceTabs />
 
 			<section className="py-12 sm:py-16">
 				<p className="text-xs font-semibold tracking-[0.24em] text-sky-700">

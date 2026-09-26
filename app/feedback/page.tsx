@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DisplayNameField } from "@/components/display-name-field";
 import { MeetingList } from "@/components/feedback/meeting-list";
 import { ProgressOverview } from "@/components/feedback/progress-overview";
+import { WorkspaceTabs } from "@/components/workspace-tabs";
 
 export default function FeedbackPage() {
 	return (
@@ -16,6 +17,7 @@ export default function FeedbackPage() {
 				</Link>
 				<span className="text-xs text-slate-500">フィードバック会</span>
 			</header>
+			<WorkspaceTabs />
 			<section className="py-10 sm:py-12">
 				<p className="text-xs font-semibold tracking-[0.24em] text-sky-700">
 					CHART FEEDBACK

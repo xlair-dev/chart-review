@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FeedbackChartReview } from "@/components/feedback/feedback-chart-review";
+import { WorkspaceTabs } from "@/components/workspace-tabs";
 
 export default async function FeedbackChartPage({
 	params,
@@ -24,6 +25,7 @@ export default async function FeedbackChartPage({
 					会に戻る
 				</Link>
 			</header>
+			<WorkspaceTabs />
 			<FeedbackChartReview chartId={chartId} meetingId={meetingId} />
 		</main>
 	);

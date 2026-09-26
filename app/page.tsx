@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { WorkspaceTabs } from "@/components/workspace-tabs";
 
 const workspaces = [
 	{
@@ -32,6 +33,7 @@ export default function Home() {
 					譜面制作サポート
 				</span>
 			</header>
+			<WorkspaceTabs />
 
 			<section className="py-16 sm:py-24">
 				<p className="mb-4 text-xs font-semibold tracking-[0.24em] text-sky-700">
