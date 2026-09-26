@@ -5,6 +5,31 @@ import { chartDirectory, database } from "@/lib/server/database";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+export async function PATCH(
+	request: Request,
+	{ params }: { params: Promise<{ meetingId: string; chartId: string }> },
+) {
+	const { meetingId, chartId } = await params;
+	const body = (await request.json().catch(() => null)) as {
+		description?: unknown;
+	} | null;
+	if (typeof body?.description !== "string") {
+		return Response.json(
+			{ error: "説明を入力してください。" },
+			{ status: 400 },
+		);
+	}
+	const update = database
+		.prepare(
+			"UPDATE meeting_charts SET description = ? WHERE meeting_id = ? AND id = ?",
+		)
+		.run(body.description, meetingId, chartId);
+	if (update.changes !== 1) {
+		return Response.json({ error: "譜面が見つかりません。" }, { status: 404 });
+	}
+	return Response.json({ id: chartId, description: body.description });
+}
+
 export async function DELETE(
 	_request: Request,
 	{ params }: { params: Promise<{ meetingId: string; chartId: string }> },

@@ -42,6 +42,9 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 	const [isSaving, setIsSaving] = useState(false);
 	const [isReplaceConfirmationOpen, setIsReplaceConfirmationOpen] =
 		useState(false);
+	const [editingDescriptionId, setEditingDescriptionId] = useState<string>();
+	const [descriptionDraft, setDescriptionDraft] = useState("");
+	const [isSavingDescription, setIsSavingDescription] = useState(false);
 	const fileInput = useRef<HTMLInputElement>(null);
 
 	const loadData = useCallback(async () => {
@@ -143,6 +146,26 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 			setError(await errorMessage(response));
 			return;
 		}
+		await loadData();
+	}
+
+	async function saveDescription(chart: MeetingChart) {
+		setIsSavingDescription(true);
+		const response = await fetch(
+			`/api/meetings/${meetingId}/charts/${chart.id}`,
+			{
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ description: descriptionDraft }),
+			},
+		);
+		if (!response.ok) {
+			setError(await errorMessage(response));
+			setIsSavingDescription(false);
+			return;
+		}
+		setEditingDescriptionId(undefined);
+		setIsSavingDescription(false);
 		await loadData();
 	}
 
@@ -304,10 +327,54 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 											{item?.music.title ?? chart.musicId} — {chart.difficulty}{" "}
 											{sheet?.level ?? ""}
 										</p>
-										{chart.description && (
-											<p className="mt-1 text-sm leading-6 text-slate-600">
-												{chart.description}
-											</p>
+										{editingDescriptionId === chart.id ? (
+											<div className="mt-2">
+												<textarea
+													aria-label="譜面の説明"
+													className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+													onChange={(event) =>
+														setDescriptionDraft(event.target.value)
+													}
+													rows={3}
+													value={descriptionDraft}
+												/>
+												<div className="mt-2 flex gap-3">
+													<button
+														className="text-sm font-medium text-sky-800 disabled:opacity-50"
+														disabled={isSavingDescription}
+														onClick={() => void saveDescription(chart)}
+														type="button"
+													>
+														{isSavingDescription ? "保存中…" : "説明を保存"}
+													</button>
+													<button
+														className="text-sm text-slate-500"
+														disabled={isSavingDescription}
+														onClick={() => setEditingDescriptionId(undefined)}
+														type="button"
+													>
+														キャンセル
+													</button>
+												</div>
+											</div>
+										) : (
+											<>
+												{chart.description && (
+													<p className="mt-1 text-sm leading-6 text-slate-600">
+														{chart.description}
+													</p>
+												)}
+												<button
+													className="mt-2 text-sm text-slate-500 hover:text-sky-800"
+													onClick={() => {
+														setDescriptionDraft(chart.description);
+														setEditingDescriptionId(chart.id);
+													}}
+													type="button"
+												>
+													説明を編集
+												</button>
+											</>
 										)}
 										<p className="mt-2 text-xs text-slate-400">
 											更新 {new Date(chart.uploadedAt).toLocaleString()}
