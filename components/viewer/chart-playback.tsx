@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { ChartRenderer } from "@/components/viewer/chart-renderer";
 import type { ChartData } from "@/lib/chart-model";
 import {
+	audioSecondsAtBeat,
+	positionAtAudioSeconds,
 	positionAtSeconds,
 	secondsAtBeat,
 	supportsChartTiming,
@@ -24,8 +26,12 @@ export function ChartPlayback({
 }) {
 	const audio = useRef<HTMLAudioElement>(null);
 	const playbackFrame = useRef<number | undefined>(undefined);
+	const chartLeadIn = useRef<
+		{ chartSeconds: number; startedAt: number; wasMuted: boolean } | undefined
+	>(undefined);
 	const [localAudioUrl, setLocalAudioUrl] = useState<string>();
 	const [localPosition, setLocalPosition] = useState(initialPosition);
+	const [isChartLeadIn, setIsChartLeadIn] = useState(false);
 	const position = controlledPosition ?? localPosition;
 	const source = localAudioUrl ?? audioSource;
 	const canPlay = supportsChartTiming(chart);
@@ -43,7 +49,7 @@ export function ChartPlayback({
 		) {
 			return;
 		}
-		const targetTime = secondsAtBeat(chart, controlledPosition);
+		const targetTime = audioSecondsAtBeat(chart, controlledPosition);
 		if (Math.abs(audio.current.currentTime - targetTime) > 0.25) {
 			audio.current.currentTime = targetTime;
 		}
@@ -90,9 +96,36 @@ export function ChartPlayback({
 
 	function seek(beat: number) {
 		changePosition(beat);
-		if (audio.current && audio.current.readyState > 0 && canPlay) {
-			audio.current.currentTime = secondsAtBeat(chart, beat);
+		const player = audio.current;
+		if (player && player.readyState > 0 && canPlay) {
+			const audioSeconds = audioSecondsAtBeat(chart, beat);
+			if (
+				!player.paused &&
+				audioSeconds === 0 &&
+				(chart.audioOffsetSeconds ?? 0) > 0
+			) {
+				startChartLeadIn(beat, player);
+			} else {
+				if (chartLeadIn.current) {
+					player.muted = chartLeadIn.current.wasMuted;
+					chartLeadIn.current = undefined;
+					setIsChartLeadIn(false);
+				}
+				player.currentTime = audioSeconds;
+			}
 		}
+	}
+
+	function startChartLeadIn(beat: number, player: HTMLAudioElement) {
+		const currentLeadIn = chartLeadIn.current;
+		chartLeadIn.current = {
+			chartSeconds: secondsAtBeat(chart, beat),
+			startedAt: performance.now(),
+			wasMuted: currentLeadIn?.wasMuted ?? player.muted,
+		};
+		player.currentTime = 0;
+		player.muted = true;
+		setIsChartLeadIn(true);
 	}
 
 	function syncPlaybackPosition() {
@@ -101,11 +134,37 @@ export function ChartPlayback({
 			playbackFrame.current = undefined;
 			return;
 		}
-		changePosition(positionAtSeconds(chart, player.currentTime));
+		const leadIn = chartLeadIn.current;
+		if (leadIn) {
+			const chartSeconds =
+				leadIn.chartSeconds + (performance.now() - leadIn.startedAt) / 1000;
+			const audioOffset = chart.audioOffsetSeconds ?? 0;
+			if (chartSeconds < audioOffset) {
+				changePosition(positionAtSeconds(chart, chartSeconds));
+			} else {
+				chartLeadIn.current = undefined;
+				player.currentTime = 0;
+				player.muted = leadIn.wasMuted;
+				setIsChartLeadIn(false);
+				changePosition(positionAtAudioSeconds(chart, 0));
+			}
+			playbackFrame.current = requestAnimationFrame(syncPlaybackPosition);
+			return;
+		}
+		changePosition(positionAtAudioSeconds(chart, player.currentTime));
 		playbackFrame.current = requestAnimationFrame(syncPlaybackPosition);
 	}
 
 	function startPlaybackSync() {
+		const player = audio.current;
+		const audioOffset = chart.audioOffsetSeconds ?? 0;
+		if (
+			player &&
+			audioOffset > 0 &&
+			secondsAtBeat(chart, position) < audioOffset
+		) {
+			startChartLeadIn(position, player);
+		}
 		if (playbackFrame.current !== undefined)
 			cancelAnimationFrame(playbackFrame.current);
 		playbackFrame.current = requestAnimationFrame(syncPlaybackPosition);
@@ -115,8 +174,36 @@ export function ChartPlayback({
 		if (playbackFrame.current !== undefined)
 			cancelAnimationFrame(playbackFrame.current);
 		playbackFrame.current = undefined;
-		if (audio.current)
-			changePosition(positionAtSeconds(chart, audio.current.currentTime));
+		const player = audio.current;
+		if (!player) return;
+		const leadIn = chartLeadIn.current;
+		if (leadIn) {
+			const chartSeconds = Math.min(
+				chart.audioOffsetSeconds ?? 0,
+				leadIn.chartSeconds + (performance.now() - leadIn.startedAt) / 1000,
+			);
+			chartLeadIn.current = undefined;
+			player.currentTime = 0;
+			player.muted = leadIn.wasMuted;
+			setIsChartLeadIn(false);
+			changePosition(positionAtSeconds(chart, chartSeconds));
+			return;
+		}
+		changePosition(positionAtAudioSeconds(chart, player.currentTime));
+	}
+
+	function syncPositionFromAudio(seconds: number) {
+		const player = audio.current;
+		if (chartLeadIn.current) return;
+		if (
+			player?.paused &&
+			seconds === 0 &&
+			(chart.audioOffsetSeconds ?? 0) > 0 &&
+			secondsAtBeat(chart, position) < (chart.audioOffsetSeconds ?? 0)
+		) {
+			return;
+		}
+		changePosition(positionAtAudioSeconds(chart, seconds));
 	}
 
 	return (
@@ -129,7 +216,7 @@ export function ChartPlayback({
 							{audioSource
 								? "server から同期した音源を再生します。"
 								: "選択した音源はこのブラウザー内だけで使います。"}
-							譜面の 0 拍目を音源の先頭に合わせます。
+							譜面に記録された音源オフセットに合わせて同期します。
 						</p>
 					</div>
 					<label className="cursor-pointer rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
@@ -150,14 +237,15 @@ export function ChartPlayback({
 						controls
 						onEnded={stopPlaybackSync}
 						onLoadedMetadata={(event) => {
-							event.currentTarget.currentTime = secondsAtBeat(chart, position);
+							event.currentTarget.currentTime = audioSecondsAtBeat(
+								chart,
+								position,
+							);
 						}}
 						onPause={stopPlaybackSync}
 						onPlay={startPlaybackSync}
 						onTimeUpdate={(event) => {
-							changePosition(
-								positionAtSeconds(chart, event.currentTarget.currentTime),
-							);
+							syncPositionFromAudio(event.currentTarget.currentTime);
 						}}
 						ref={audio}
 						src={source}
@@ -167,6 +255,11 @@ export function ChartPlayback({
 						{audioSource
 							? "同期済み音源を再生できます。"
 							: "音源を選択すると再生できます。"}
+					</p>
+				)}
+				{isChartLeadIn && (
+					<p className="mt-2 text-sm text-sky-700" role="status">
+						譜面を先行して再生中です。音源は譜面のオフセット後に始まります。
 					</p>
 				)}
 				{!canPlay && (

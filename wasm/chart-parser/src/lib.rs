@@ -27,6 +27,7 @@ pub fn parse_chart_json(format: &str, source: &[u8]) -> Result<String, JsValue> 
 struct ChartData<'a> {
     format: &'a str,
     base_bpm: Option<f64>,
+    audio_offset_seconds: Option<f64>,
     priority_enabled: Option<bool>,
     measure_lengths: Vec<MeasureLengthData>,
     tempo_changes: Vec<TempoChangeData>,
@@ -39,6 +40,7 @@ impl<'a> ChartData<'a> {
         Self {
             format,
             base_bpm: chart.base_bpm(),
+            audio_offset_seconds: chart.audio_offset_seconds(),
             priority_enabled: chart.priority_enabled(),
             measure_lengths: chart
                 .measure_lengths()

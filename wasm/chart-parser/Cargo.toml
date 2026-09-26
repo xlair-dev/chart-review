@@ -8,8 +8,8 @@ description = "Browser-side chart parser for chart-review"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-chart = { git = "https://github.com/xlair-dev/ChartConverter.git", rev = "9d0bd8843f915adaf2ca61f425b9cf5e1f5c8a49" }
-chart-converter = { git = "https://github.com/xlair-dev/ChartConverter.git", rev = "9d0bd8843f915adaf2ca61f425b9cf5e1f5c8a49" }
+chart = { git = "https://github.com/xlair-dev/ChartConverter.git", rev = "dbd994fb0415e17a461265ab279c560806c03a34" }
+chart-converter = { git = "https://github.com/xlair-dev/ChartConverter.git", rev = "dbd994fb0415e17a461265ab279c560806c03a34" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 wasm-bindgen = "0.2.105"
