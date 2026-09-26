@@ -45,7 +45,8 @@ export function ChartPlayback({
 			controlledPosition === undefined ||
 			!audio.current ||
 			audio.current.readyState === 0 ||
-			!canPlay
+			!canPlay ||
+			isChartLeadIn
 		) {
 			return;
 		}
@@ -53,7 +54,7 @@ export function ChartPlayback({
 		if (Math.abs(audio.current.currentTime - targetTime) > 0.25) {
 			audio.current.currentTime = targetTime;
 		}
-	}, [chart, canPlay, controlledPosition]);
+	}, [chart, canPlay, controlledPosition, isChartLeadIn]);
 	useEffect(
 		() => () => {
 			if (playbackFrame.current !== undefined)
@@ -130,7 +131,7 @@ export function ChartPlayback({
 
 	function syncPlaybackPosition() {
 		const player = audio.current;
-		if (!player || player.paused) {
+		if (!player) {
 			playbackFrame.current = undefined;
 			return;
 		}
@@ -143,12 +144,26 @@ export function ChartPlayback({
 				changePosition(positionAtSeconds(chart, chartSeconds));
 			} else {
 				chartLeadIn.current = undefined;
+				player.muted = true;
+				const wasPaused = player.paused;
+				const finishAudioSeek = () => {
+					player.muted = leadIn.wasMuted;
+					if (wasPaused) void player.play();
+				};
+				if (player.currentTime < 0.001) {
+					finishAudioSeek();
+				} else {
+					player.addEventListener("seeked", finishAudioSeek, { once: true });
+				}
 				player.currentTime = 0;
-				player.muted = leadIn.wasMuted;
 				setIsChartLeadIn(false);
 				changePosition(positionAtAudioSeconds(chart, 0));
 			}
 			playbackFrame.current = requestAnimationFrame(syncPlaybackPosition);
+			return;
+		}
+		if (player.paused) {
+			playbackFrame.current = undefined;
 			return;
 		}
 		changePosition(positionAtAudioSeconds(chart, player.currentTime));
@@ -235,7 +250,9 @@ export function ChartPlayback({
 					<audio
 						className="mt-4 w-full"
 						controls
-						onEnded={stopPlaybackSync}
+						onEnded={() => {
+							if (!chartLeadIn.current) stopPlaybackSync();
+						}}
 						onLoadedMetadata={(event) => {
 							event.currentTarget.currentTime = audioSecondsAtBeat(
 								chart,
