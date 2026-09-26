@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 
 export function ConfirmationDialog({
 	open,
@@ -20,20 +20,35 @@ export function ConfirmationDialog({
 	onConfirm: () => void;
 }) {
 	const titleId = useId();
-	if (!open) return null;
+	const descriptionId = useId();
+	const dialog = useRef<HTMLDialogElement>(null);
+
+	useEffect(() => {
+		const element = dialog.current;
+		if (!element) return;
+		if (open && !element.open) element.showModal();
+		if (!open && element.open) element.close();
+	}, [open]);
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-			<section
-				aria-labelledby={titleId}
-				aria-modal="true"
-				className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-				role="alertdialog"
-			>
+		<dialog
+			aria-labelledby={titleId}
+			aria-describedby={descriptionId}
+			className="m-auto w-full max-w-md bg-transparent p-0 text-slate-900 backdrop:bg-slate-950/50"
+			onCancel={(event) => {
+				event.preventDefault();
+				onCancel();
+			}}
+			ref={dialog}
+			role="alertdialog"
+		>
+			<section className="rounded-2xl bg-white p-6 shadow-xl">
 				<h2 className="text-lg font-semibold" id={titleId}>
 					{title}
 				</h2>
-				<p className="mt-3 text-sm leading-6 text-slate-600">{description}</p>
+				<p className="mt-3 text-sm leading-6 text-slate-600" id={descriptionId}>
+					{description}
+				</p>
 				<div className="mt-6 flex justify-end gap-3">
 					<button
 						className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
@@ -53,6 +68,6 @@ export function ConfirmationDialog({
 					</button>
 				</div>
 			</section>
-		</div>
+		</dialog>
 	);
 }
