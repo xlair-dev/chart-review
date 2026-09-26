@@ -40,6 +40,8 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 	const [error, setError] = useState("");
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
+	const [isReplaceConfirmationOpen, setIsReplaceConfirmationOpen] =
+		useState(false);
 	const fileInput = useRef<HTMLInputElement>(null);
 
 	const loadData = useCallback(async () => {
@@ -96,13 +98,16 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 	async function uploadChart(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		if (!chosenSheet || !file) return;
-		if (
-			existingChart &&
-			!window.confirm(
-				"譜面を差し替えると、この譜面に付いたコメントは削除されます。続けますか？",
-			)
-		)
+		if (existingChart) {
+			setIsReplaceConfirmationOpen(true);
 			return;
+		}
+		await saveChart();
+	}
+
+	async function saveChart() {
+		if (!chosenSheet || !file) return;
+		setIsReplaceConfirmationOpen(false);
 		setIsSaving(true);
 		const form = new FormData();
 		form.set("musicId", chosenSheet.sheet.musicId);
@@ -235,6 +240,41 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 				</form>
 				{error && <p className="mt-4 text-sm text-rose-700">{error}</p>}
 			</section>
+
+			{isReplaceConfirmationOpen && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+					<section
+						aria-labelledby="replace-chart-title"
+						aria-modal="true"
+						className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+						role="alertdialog"
+					>
+						<h2 className="text-lg font-semibold" id="replace-chart-title">
+							譜面を差し替えますか？
+						</h2>
+						<p className="mt-3 text-sm leading-6 text-slate-600">
+							譜面を差し替えると、この譜面に付いたコメントは削除されます。
+						</p>
+						<div className="mt-6 flex justify-end gap-3">
+							<button
+								className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+								onClick={() => setIsReplaceConfirmationOpen(false)}
+								type="button"
+							>
+								キャンセル
+							</button>
+							<button
+								className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+								disabled={isSaving}
+								onClick={() => void saveChart()}
+								type="button"
+							>
+								譜面を差し替える
+							</button>
+						</div>
+					</section>
+				</div>
+			)}
 
 			<section className="mt-10">
 				<div className="mb-4 flex items-baseline justify-between gap-4">
