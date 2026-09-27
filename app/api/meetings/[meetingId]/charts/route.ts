@@ -76,13 +76,15 @@ export async function POST(
 		file.size === 0 ||
 		file.size > maxUploadSizeBytes
 	) {
+		const isTooLarge = file instanceof File && file.size > maxUploadSizeBytes;
 		return Response.json(
 			{
-				error: `有効な C2S、SUS、UGC 譜面と難易度を選んでください（${Math.floor(maxUploadSizeBytes / 1024 / 1024)} MiB 以下）。`,
+				error: isTooLarge
+					? `譜面ファイルは ${Math.floor(maxUploadSizeBytes / 1024 / 1024)} MiB 以下にしてください。`
+					: "有効な C2S、SUS、UGC 譜面と難易度を選んでください。",
 			},
 			{
-				status:
-					file instanceof File && file.size > maxUploadSizeBytes ? 413 : 400,
+				status: isTooLarge ? 413 : 400,
 			},
 		);
 	}
