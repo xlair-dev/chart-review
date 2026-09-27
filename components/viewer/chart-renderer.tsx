@@ -508,12 +508,9 @@ function paintPlayfield(
 		return center - fieldWidth / 2 + (fieldWidth * lane) / 20;
 	};
 	const lanePoint = (lane: number, y: number): [number, number] => {
-		const depth = Math.max(
-			0,
-			Math.min(1, (y - horizonY) / (floorY - horizonY)),
-		);
-		const sideDepth = Math.max(0.4, depth);
-		const lowerWidth = Math.abs(baseLaneX(2, y) - baseLaneX(1, y)) * sideDepth;
+		const sideWidthScale = 1.2;
+		const lowerWidth =
+			Math.abs(baseLaneX(2, y) - baseLaneX(1, y)) * sideWidthScale;
 		const lowerRise = lowerWidth * Math.tan(Math.PI / 4);
 		const upperRise = lowerWidth * 2.2;
 		if (lane === 1) return [baseLaneX(2, y) - lowerWidth, y - lowerRise];
