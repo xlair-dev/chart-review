@@ -116,8 +116,16 @@ function paintNoteHead(
 	y: number,
 	width: number,
 	height: number,
+	angle?: number,
 ) {
 	const color = noteColor(note);
+	if (angle !== undefined) {
+		context.save();
+		context.translate(x + width / 2, y);
+		context.rotate(angle);
+		x = -width / 2;
+		y = 0;
+	}
 	const isHoldHead =
 		note.kind.type === "hold" ||
 		note.kind.type === "exHold" ||
@@ -127,6 +135,7 @@ function paintNoteHead(
 		context.beginPath();
 		context.roundRect(x, y - height / 2, width, height, height * 0.4);
 		context.fill();
+		if (angle !== undefined) context.restore();
 		return;
 	}
 	context.fillStyle = colorWithAlpha(color, 0.24);
@@ -140,6 +149,7 @@ function paintNoteHead(
 	context.moveTo(x + Math.min(2, width / 4), y);
 	context.lineTo(x + width - Math.min(2, width / 4), y);
 	context.stroke();
+	if (angle !== undefined) context.restore();
 }
 
 function chartEnd(chart: ChartData): number {
@@ -497,51 +507,75 @@ function paintPlayfield(
 		const fieldWidth = horizonWidth + (floorWidth - horizonWidth) * depth;
 		return center - fieldWidth / 2 + (fieldWidth * lane) / 20;
 	};
-	const laneX = (lane: number, y: number) => {
+	const lanePoint = (lane: number, y: number): [number, number] => {
 		const depth = Math.max(
 			0,
 			Math.min(1, (y - horizonY) / (floorY - horizonY)),
 		);
-		const sideLaneWidth = (baseLaneX(2, y) - baseLaneX(1, y)) * 0.45 * depth;
-		if (lane === 0) return baseLaneX(lane, y) - sideLaneWidth * 1.8;
-		if (lane === 1) return baseLaneX(lane, y) - sideLaneWidth;
-		if (lane === 19) return baseLaneX(lane, y) + sideLaneWidth;
-		if (lane === 20) return baseLaneX(lane, y) + sideLaneWidth * 1.8;
-		return baseLaneX(lane, y);
+		const lowerWidth = Math.abs(baseLaneX(2, y) - baseLaneX(1, y)) * depth;
+		const lowerRise = lowerWidth * Math.tan(Math.PI / 4);
+		const upperRise = lowerWidth * 2.2;
+		if (lane === 1) return [baseLaneX(2, y) - lowerWidth, y - lowerRise];
+		if (lane === 0)
+			return [baseLaneX(2, y) - lowerWidth, y - lowerRise - upperRise];
+		if (lane === 19) return [baseLaneX(18, y) + lowerWidth, y - lowerRise];
+		if (lane === 20)
+			return [baseLaneX(18, y) + lowerWidth, y - lowerRise - upperRise];
+		return [baseLaneX(lane, y), y];
 	};
-	const drawLaneBand = (startLane: number, endLane: number, color: string) => {
+	const renderedLanePointAtDepth = (
+		lane: number,
+		depth: number,
+	): [number, number] => {
+		const progress = Math.max(0, Math.min(1, depth));
+		const [topX, topY] = lanePoint(lane, horizonY);
+		const [bottomX, bottomY] = lanePoint(lane, floorY);
+		return [
+			topX + (bottomX - topX) * progress,
+			topY + (bottomY - topY) * progress,
+		];
+	};
+	const drawLaneSurface = (
+		startLane: number,
+		endLane: number,
+		color: string,
+	) => {
+		const [startTopX, startTopY] = lanePoint(startLane, horizonY);
+		const [endTopX, endTopY] = lanePoint(endLane, horizonY);
+		const [endBottomX, endBottomY] = lanePoint(endLane, floorY);
+		const [startBottomX, startBottomY] = lanePoint(startLane, floorY);
 		context.fillStyle = color;
 		context.beginPath();
-		context.moveTo(laneX(startLane, horizonY), horizonY);
-		context.lineTo(laneX(endLane, horizonY), horizonY);
-		context.lineTo(laneX(endLane, floorY), floorY);
-		context.lineTo(laneX(startLane, floorY), floorY);
+		context.moveTo(startTopX, startTopY);
+		context.lineTo(endTopX, endTopY);
+		context.lineTo(endBottomX, endBottomY);
+		context.lineTo(startBottomX, startBottomY);
 		context.closePath();
 		context.fill();
 	};
-	drawLaneBand(0, 20, "#0f172a");
-	drawLaneBand(2, 18, "#172554");
-	for (const [startLane, endLane, color] of [
-		[0, 1, "#312e81"],
-		[1, 2, "#1e3a8a"],
-		[18, 19, "#1e3a8a"],
-		[19, 20, "#312e81"],
-	] as const) {
-		drawLaneBand(startLane, endLane, color);
-	}
+	drawLaneSurface(2, 18, "#172554");
+	drawLaneSurface(1, 2, "#1e3a8a");
+	drawLaneSurface(0, 1, "#312e81");
+	drawLaneSurface(18, 19, "#1e3a8a");
+	drawLaneSurface(19, 20, "#312e81");
 	context.strokeStyle = "#475569";
 	context.lineWidth = 1;
 	for (let lane = 0; lane <= 20; lane++) {
+		const [topX, topY] = lanePoint(lane, horizonY);
+		const [bottomX, bottomY] = lanePoint(lane, floorY);
 		context.beginPath();
-		context.moveTo(laneX(lane, horizonY), horizonY);
-		context.lineTo(laneX(lane, floorY), floorY);
+		context.moveTo(topX, topY);
+		context.lineTo(bottomX, bottomY);
 		context.stroke();
 	}
 	context.strokeStyle = "#e2e8f0";
 	context.lineWidth = 3;
 	context.beginPath();
-	context.moveTo(laneX(0, floorY) - 8, floorY);
-	context.lineTo(laneX(20, floorY) + 8, floorY);
+	for (let lane = 0; lane <= 20; lane++) {
+		const [x, y] = lanePoint(lane, floorY);
+		if (lane === 0) context.moveTo(x, y);
+		else context.lineTo(x, y);
+	}
 	context.stroke();
 
 	const approachBeats = 6 / noteSpeed;
@@ -562,8 +596,11 @@ function paintPlayfield(
 			continue;
 		const y = Math.max(horizonY, Math.min(floorY, yAtBeat(beat)));
 		context.beginPath();
-		context.moveTo(laneX(0, y), y);
-		context.lineTo(laneX(20, y), y);
+		for (let lane = 0; lane <= 20; lane++) {
+			const [x, laneY] = lanePoint(lane, y);
+			if (lane === 0) context.moveTo(x, laneY);
+			else context.lineTo(x, laneY);
+		}
 		context.stroke();
 	}
 	const drawPath = (note: Note, path: PlayfieldPathPoint[]) => {
@@ -582,33 +619,40 @@ function paintPlayfield(
 				0,
 				Math.min(1, 1 - (point.position - currentBeat) / approachBeats),
 			);
-			const previousY = Math.max(
-				horizonY,
-				Math.min(floorY, horizonY + previousDepth ** 1.7 * (floorY - horizonY)),
+			const [previousLeft, previousYOnLane] = renderedLanePointAtDepth(
+				previous.laneStart,
+				previousDepth,
 			);
-			const pointY = Math.max(
-				horizonY,
-				Math.min(floorY, horizonY + pointDepth ** 1.7 * (floorY - horizonY)),
+			const [previousRight, previousYOnLaneEnd] = renderedLanePointAtDepth(
+				previous.laneEnd,
+				previousDepth,
 			);
-			const previousLeft = laneX(previous.laneStart, previousY);
-			const previousRight = laneX(previous.laneEnd, previousY);
-			const pointLeft = laneX(point.laneStart, pointY);
-			const pointRight = laneX(point.laneEnd, pointY);
+			const [pointLeft, pointYOnLane] = renderedLanePointAtDepth(
+				point.laneStart,
+				pointDepth,
+			);
+			const [pointRight, pointYOnLaneEnd] = renderedLanePointAtDepth(
+				point.laneEnd,
+				pointDepth,
+			);
 			const previousCenter = (previousLeft + previousRight) / 2;
 			const pointCenter = (pointLeft + pointRight) / 2;
 			context.fillStyle = colorWithAlpha(color, 0.22);
 			context.beginPath();
-			context.moveTo(previousLeft, previousY);
-			context.lineTo(previousRight, previousY);
-			context.lineTo(pointRight, pointY);
-			context.lineTo(pointLeft, pointY);
+			context.moveTo(previousLeft, previousYOnLane);
+			context.lineTo(previousRight, previousYOnLaneEnd);
+			context.lineTo(pointRight, pointYOnLaneEnd);
+			context.lineTo(pointLeft, pointYOnLane);
 			context.closePath();
 			context.fill();
 			context.strokeStyle = colorWithAlpha(color, 0.7);
 			context.lineWidth = 2.5;
 			context.beginPath();
-			context.moveTo(previousCenter, previousY);
-			context.lineTo(pointCenter, pointY);
+			context.moveTo(
+				previousCenter,
+				(previousYOnLane + previousYOnLaneEnd) / 2,
+			);
+			context.lineTo(pointCenter, (pointYOnLane + pointYOnLaneEnd) / 2);
 			context.stroke();
 		}
 	};
@@ -647,57 +691,94 @@ function paintPlayfield(
 		const [startLane, endLane] = laneRange(note.lane);
 		const headIsVisible = distance >= -1;
 		const headY = Math.max(horizonY, Math.min(floorY, yAtBeat(notePosition)));
-		const headWidth = Math.max(
-			4,
-			laneX(endLane, headY) - laneX(startLane, headY) - 4,
+		const headDepth = Math.max(
+			0,
+			Math.min(1, 1 - (notePosition - currentBeat) / approachBeats),
 		);
+		const [headLeft, headLeftY] = renderedLanePointAtDepth(
+			startLane,
+			headDepth,
+		);
+		const [headRight, headRightY] = renderedLanePointAtDepth(
+			endLane,
+			headDepth,
+		);
+		const headVectorX = headRight - headLeft;
+		const headVectorY = headRightY - headLeftY;
+		const headWidth = Math.max(4, Math.hypot(headVectorX, headVectorY) - 4);
 		if (
 			isSustainVisible &&
 			sustainStartVisible !== null &&
 			sustainEndVisible !== null
 		) {
-			const sustainStartY = Math.max(
-				horizonY,
-				Math.min(floorY, yAtBeat(sustainStartVisible)),
-			);
-			const sustainEndY = Math.max(
-				horizonY,
-				Math.min(floorY, yAtBeat(sustainEndVisible)),
-			);
-			const sustainWidthAt = (y: number) =>
-				Math.max(4, laneX(endLane, y) - laneX(startLane, y) - 4);
-			const startCenter =
-				(laneX(startLane, sustainStartY) + laneX(endLane, sustainStartY)) / 2;
-			const endCenter =
-				(laneX(startLane, sustainEndY) + laneX(endLane, sustainEndY)) / 2;
 			context.fillStyle = noteColor(note);
 			context.globalAlpha = 0.58;
 			context.beginPath();
-			context.moveTo(
-				startCenter - sustainWidthAt(sustainStartY) / 2,
-				sustainStartY,
+			const sustainSegments = Math.max(
+				8,
+				Math.ceil(Math.abs(sustainEndVisible - sustainStartVisible) / 2),
 			);
-			context.lineTo(
-				startCenter + sustainWidthAt(sustainStartY) / 2,
-				sustainStartY,
-			);
-			context.lineTo(endCenter + sustainWidthAt(sustainEndY) / 2, sustainEndY);
-			context.lineTo(endCenter - sustainWidthAt(sustainEndY) / 2, sustainEndY);
-			context.closePath();
+			for (let segment = 0; segment < sustainSegments; segment += 1) {
+				const startRatio = segment / sustainSegments;
+				const endRatio = (segment + 1) / sustainSegments;
+				const segmentStartDepth = Math.max(
+					0,
+					Math.min(
+						1,
+						1 -
+							(sustainStartVisible +
+								(sustainEndVisible - sustainStartVisible) * startRatio -
+								currentBeat) /
+								approachBeats,
+					),
+				);
+				const segmentEndDepth = Math.max(
+					0,
+					Math.min(
+						1,
+						1 -
+							(sustainStartVisible +
+								(sustainEndVisible - sustainStartVisible) * endRatio -
+								currentBeat) /
+								approachBeats,
+					),
+				);
+				const [segmentStartLeft, segmentStartLeftY] = renderedLanePointAtDepth(
+					startLane,
+					segmentStartDepth,
+				);
+				const [segmentStartRight, segmentStartRightY] =
+					renderedLanePointAtDepth(endLane, segmentStartDepth);
+				const [segmentEndLeft, segmentEndLeftY] = renderedLanePointAtDepth(
+					startLane,
+					segmentEndDepth,
+				);
+				const [segmentEndRight, segmentEndRightY] = renderedLanePointAtDepth(
+					endLane,
+					segmentEndDepth,
+				);
+				context.moveTo(segmentStartLeft, segmentStartLeftY);
+				context.lineTo(segmentStartRight, segmentStartRightY);
+				context.lineTo(segmentEndRight, segmentEndRightY);
+				context.lineTo(segmentEndLeft, segmentEndLeftY);
+				context.closePath();
+			}
 			context.fill();
 			context.globalAlpha = 1;
 		}
 		const perspective = (headY - horizonY) / (floorY - horizonY);
 		if (!headIsVisible || headY >= floorY || headY < horizonY) continue;
-		const gameX = laneX(startLane, headY) + 2;
-		const gameWidth = headWidth;
+		const gameX = (headLeft + headRight) / 2 - headWidth / 2;
+		const gameY = (headLeftY + headRightY) / 2;
+		const headAngle = Math.atan2(headVectorY, headVectorX);
 		paintNoteHead(
 			context,
 			note,
 			gameX,
-			headY - perspective * 4,
-			gameWidth,
+			gameY,
+			headWidth,
 			7 + perspective * 8,
+			headAngle,
 		);
 	}
 }
