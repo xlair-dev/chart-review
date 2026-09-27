@@ -1,4 +1,8 @@
 import { loadCatalog } from "@/lib/server/catalog";
+import {
+	fetchXlairApi,
+	XlairApiConfigurationError,
+} from "@/lib/server/xlair-api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,18 +19,10 @@ export async function GET(
 		if (!music?.audio)
 			return new Response("音源がありません。", { status: 404 });
 
-		const serverUrl = process.env.CHART_REVIEW_SERVER_URL;
-		const deviceToken = process.env.CHART_REVIEW_DEVICE_TOKEN;
-		if (!serverUrl || !deviceToken)
-			return new Response("音源を取得できません。", { status: 503 });
-
-		const headers = new Headers({ Authorization: `Bearer ${deviceToken}` });
+		const headers = new Headers();
 		const range = request.headers.get("range");
 		if (range) headers.set("Range", range);
-		const upstream = await fetch(new URL(music.audio.url, serverUrl), {
-			cache: "no-store",
-			headers,
-		});
+		const upstream = await fetchXlairApi(music.audio.url, { headers });
 		const responseHeaders = new Headers();
 		for (const name of [
 			"accept-ranges",
@@ -41,7 +37,9 @@ export async function GET(
 			status: upstream.status,
 			headers: responseHeaders,
 		});
-	} catch {
+	} catch (error) {
+		if (error instanceof XlairApiConfigurationError)
+			return new Response("音源を取得できません。", { status: 503 });
 		return new Response("音源を取得できませんでした。", { status: 502 });
 	}
 }
