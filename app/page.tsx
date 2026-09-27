@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { WorkspaceTabs } from "@/components/workspace-tabs";
 
 const workspaces = [
 	{
 		number: "01",
 		title: "譜面ビューワー",
-		description: "譜面を読み込み、再生しながら確認する。",
+		description: "音源と譜面を読み込み、再生しながら確認する。",
 		status: "ローカル解析",
 		href: "/viewer",
 	},
@@ -20,7 +19,7 @@ const workspaces = [
 
 export default function Home() {
 	return (
-		<main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-8 sm:px-10 sm:py-12">
+		<main className="mx-auto flex min-h-screen w-full max-w-[1500px] flex-col px-4 py-6 sm:px-8">
 			<header className="flex items-center justify-between border-b border-slate-200 pb-5">
 				<a
 					className="text-sm font-bold tracking-[0.2em] text-slate-800"
@@ -33,29 +32,14 @@ export default function Home() {
 					譜面制作サポート
 				</span>
 			</header>
-			<WorkspaceTabs />
-
-			<section className="py-16 sm:py-24">
-				<p className="mb-4 text-xs font-semibold tracking-[0.24em] text-sky-700">
-					CHART REVIEW WORKSPACE
-				</p>
-				<h1 className="max-w-2xl text-4xl font-semibold leading-tight tracking-tight sm:text-6xl">
-					譜面を見て、
-					<br />
-					一緒に磨く。
-				</h1>
-				<p className="mt-6 max-w-xl text-base leading-8 text-slate-600">
-					譜面の再生とフィードバックを通じて、制作チームのレビューを支援します。
-				</p>
-			</section>
-
 			<section
 				aria-label="ワークスペース"
-				className="grid gap-4 sm:grid-cols-2"
+				className="mt-8 grid gap-4 sm:grid-cols-2"
 			>
 				{workspaces.map((workspace) => (
-					<article
-						className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8"
+					<Link
+						className="group rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-sky-300 hover:bg-sky-50/30 hover:shadow-sm sm:p-8"
+						href={workspace.href}
 						key={workspace.number}
 					>
 						<div className="flex items-start justify-between">
@@ -70,18 +54,13 @@ export default function Home() {
 						<p className="mt-3 text-sm leading-6 text-slate-600">
 							{workspace.description}
 						</p>
-						{workspace.href && (
-							<Link
-								className="mt-7 inline-flex text-sm font-medium text-sky-800 hover:text-sky-600"
-								href={workspace.href}
-							>
-								開く{" "}
-								<span aria-hidden="true" className="ml-2">
-									→
-								</span>
-							</Link>
-						)}
-					</article>
+						<span className="mt-7 inline-flex text-sm font-medium text-sky-800 group-hover:text-sky-600">
+							開く{" "}
+							<span aria-hidden="true" className="ml-2">
+								→
+							</span>
+						</span>
+					</Link>
 				))}
 			</section>
 

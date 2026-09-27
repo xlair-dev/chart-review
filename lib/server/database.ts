@@ -47,6 +47,7 @@ database.exec(`
 		display_name TEXT NOT NULL,
 		position_numerator TEXT NOT NULL,
 		position_denominator TEXT NOT NULL,
+		lane_position REAL NOT NULL,
 		body TEXT NOT NULL,
 		created_at TEXT NOT NULL
 	);
@@ -62,6 +63,16 @@ database.exec(`
 		total_count INTEGER NOT NULL CHECK (total_count >= 0)
 	);
 `);
+
+const commentColumns = database.pragma("table_info(comments)") as {
+	name: string;
+}[];
+if (!commentColumns.some((column) => column.name === "lane_position")) {
+	database.exec("ALTER TABLE comments ADD COLUMN lane_position REAL");
+}
+database.exec(
+	"UPDATE comments SET lane_position = 10 WHERE lane_position IS NULL",
+);
 
 export const chartDirectory = path.join(dataDirectory, "charts");
 mkdirSync(chartDirectory, { recursive: true });

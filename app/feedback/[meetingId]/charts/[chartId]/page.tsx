@@ -1,6 +1,6 @@
 import Link from "next/link";
+import { FeedbackBreadcrumbs } from "@/components/feedback/feedback-breadcrumbs";
 import { FeedbackChartReview } from "@/components/feedback/feedback-chart-review";
-import { WorkspaceTabs } from "@/components/workspace-tabs";
 
 export default async function FeedbackChartPage({
 	params,
@@ -25,7 +25,14 @@ export default async function FeedbackChartPage({
 					会に戻る
 				</Link>
 			</header>
-			<WorkspaceTabs />
+			<FeedbackBreadcrumbs
+				items={[
+					{ href: "/", label: "トップ" },
+					{ href: "/feedback", label: "フィードバック会" },
+					{ href: `/feedback/${meetingId}`, label: "会の譜面" },
+					{ label: "譜面レビュー" },
+				]}
+			/>
 			<FeedbackChartReview chartId={chartId} meetingId={meetingId} />
 		</main>
 	);

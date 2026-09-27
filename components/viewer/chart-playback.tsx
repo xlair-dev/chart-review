@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChartRenderer } from "@/components/viewer/chart-renderer";
+import {
+	type ChartComment,
+	type ChartCommentComposer,
+	ChartRenderer,
+} from "@/components/viewer/chart-renderer";
 import type { ChartData } from "@/lib/chart-model";
 import {
 	audioSecondsAtBeat,
@@ -11,18 +15,39 @@ import {
 	supportsChartTiming,
 } from "@/lib/chart-timing";
 
+function requestAudioPlay(player: HTMLAudioElement) {
+	void player.play().catch((error: unknown) => {
+		if (error instanceof DOMException && error.name === "AbortError") return;
+		console.error("Audio playback failed", error);
+	});
+}
+
 export function ChartPlayback({
 	chart,
 	audioSource,
 	initialPosition = 0,
 	position: controlledPosition,
 	onPositionChange,
+	onCommentPositionChange,
+	onCommentDelete,
+	onCommentSelect,
+	commentComposer,
+	comments = [],
+	allowLocalAudioSelection = true,
+	commentListEnabled = false,
 }: {
 	chart: ChartData;
 	audioSource?: string | null;
 	initialPosition?: number;
 	position?: number;
 	onPositionChange?: (position: number) => void;
+	onCommentPositionChange?: (position: number, lanePosition: number) => void;
+	onCommentDelete?: (comment: ChartComment) => void;
+	onCommentSelect?: (comment: ChartComment) => void;
+	commentComposer?: ChartCommentComposer;
+	comments?: ChartComment[];
+	allowLocalAudioSelection?: boolean;
+	commentListEnabled?: boolean;
 }) {
 	const audio = useRef<HTMLAudioElement>(null);
 	const playbackFrame = useRef<number | undefined>(undefined);
@@ -32,6 +57,10 @@ export function ChartPlayback({
 	const [localAudioUrl, setLocalAudioUrl] = useState<string>();
 	const [localPosition, setLocalPosition] = useState(initialPosition);
 	const [isChartLeadIn, setIsChartLeadIn] = useState(false);
+	const [isPlaying, setIsPlaying] = useState(false);
+	const [noteSpeed, setNoteSpeed] = useState(1);
+	const [noteSpeedInput, setNoteSpeedInput] = useState("1.00");
+	const renderNoteSpeed = noteSpeed * 2.6;
 	const position = controlledPosition ?? localPosition;
 	const source = localAudioUrl ?? audioSource;
 	const canPlay = supportsChartTiming(chart);
@@ -78,7 +107,7 @@ export function ChartPlayback({
 			}
 			if (!audio.current || !source) return;
 			event.preventDefault();
-			if (audio.current.paused) void audio.current.play();
+			if (audio.current.paused) requestAudioPlay(audio.current);
 			else audio.current.pause();
 		}
 		window.addEventListener("keydown", handleSpace);
@@ -93,6 +122,26 @@ export function ChartPlayback({
 	function chooseAudio(file?: File) {
 		setLocalAudioUrl(file ? URL.createObjectURL(file) : undefined);
 		changePosition(0);
+	}
+
+	function changeNoteSpeedInput(value: string) {
+		setNoteSpeedInput(value);
+		if (!value.trim()) return;
+		const parsed = Number(value);
+		if (Number.isFinite(parsed)) {
+			setNoteSpeed(Math.min(2, Math.max(0.5, parsed)));
+		}
+	}
+
+	function commitNoteSpeedInput() {
+		const parsed = Number(noteSpeedInput);
+		if (!Number.isFinite(parsed)) {
+			setNoteSpeedInput(noteSpeed.toFixed(2));
+			return;
+		}
+		const nextSpeed = Math.min(2, Math.max(0.5, parsed));
+		setNoteSpeed(nextSpeed);
+		setNoteSpeedInput(nextSpeed.toFixed(2));
 	}
 
 	function seek(beat: number) {
@@ -148,7 +197,7 @@ export function ChartPlayback({
 				const wasPaused = player.paused;
 				const finishAudioSeek = () => {
 					player.muted = leadIn.wasMuted;
-					if (wasPaused) void player.play();
+					if (wasPaused) requestAudioPlay(player);
 				};
 				if (player.currentTime < 0.001) {
 					finishAudioSeek();
@@ -234,16 +283,18 @@ export function ChartPlayback({
 							譜面に記録された音源オフセットに合わせて同期します。
 						</p>
 					</div>
-					<label className="cursor-pointer rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-						音源を選択
-						<input
-							accept="audio/*"
-							className="sr-only"
-							disabled={!canPlay}
-							onChange={(event) => chooseAudio(event.target.files?.[0])}
-							type="file"
-						/>
-					</label>
+					{allowLocalAudioSelection && (
+						<label className="cursor-pointer rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+							音源を選択
+							<input
+								accept="audio/*"
+								className="sr-only"
+								disabled={!canPlay}
+								onChange={(event) => chooseAudio(event.target.files?.[0])}
+								type="file"
+							/>
+						</label>
+					)}
 				</div>
 				{source && canPlay ? (
 					// biome-ignore lint/a11y/useMediaCaption: The selected file is music for chart timing and has no dialogue.
@@ -251,6 +302,7 @@ export function ChartPlayback({
 						className="mt-4 w-full"
 						controls
 						onEnded={() => {
+							setIsPlaying(false);
 							if (!chartLeadIn.current) stopPlaybackSync();
 						}}
 						onLoadedMetadata={(event) => {
@@ -260,10 +312,14 @@ export function ChartPlayback({
 							);
 						}}
 						onPause={(event) => {
+							setIsPlaying(false);
 							if (chartLeadIn.current && event.currentTarget.ended) return;
 							stopPlaybackSync();
 						}}
-						onPlay={startPlaybackSync}
+						onPlay={() => {
+							setIsPlaying(true);
+							startPlaybackSync();
+						}}
 						onTimeUpdate={(event) => {
 							syncPositionFromAudio(event.currentTarget.currentTime);
 						}}
@@ -290,6 +346,17 @@ export function ChartPlayback({
 			</section>
 			<ChartRenderer
 				chart={chart}
+				comments={comments}
+				commentListEnabled={commentListEnabled}
+				commentComposer={commentComposer}
+				noteSpeed={renderNoteSpeed}
+				onCommentDelete={onCommentDelete}
+				onCommentPositionChange={onCommentPositionChange}
+				onCommentSelect={onCommentSelect}
+				isPlaying={isPlaying || isChartLeadIn}
+				displayNoteSpeed={noteSpeedInput}
+				onNoteSpeedChange={changeNoteSpeedInput}
+				onNoteSpeedCommit={commitNoteSpeedInput}
 				onPositionChange={seek}
 				position={position}
 			/>

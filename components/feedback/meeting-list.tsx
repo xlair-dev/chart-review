@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { ProgressOverview } from "@/components/feedback/progress-overview";
 
 interface MeetingSummary {
 	id: string;
 	heldOn: string;
-	passedCount: number;
-	totalCount: number;
 	chartCount: number;
 }
 
@@ -101,6 +100,9 @@ export function MeetingList() {
 					</form>
 				</div>
 				{error && <p className="mt-5 text-sm text-rose-700">{error}</p>}
+				<div className="mt-6 pt-2">
+					<ProgressOverview />
+				</div>
 			</section>
 
 			{isLoading ? (
@@ -112,16 +114,9 @@ export function MeetingList() {
 			) : (
 				<div className="grid gap-4">
 					{meetings.map((meeting) => {
-						const progress =
-							meeting.totalCount === 0
-								? 0
-								: Math.min(
-										100,
-										(meeting.passedCount / meeting.totalCount) * 100,
-									);
 						return (
 							<Link
-								className="rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-sky-300"
+								className="rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-sky-300 hover:bg-sky-50/30 hover:shadow-sm"
 								href={`/feedback/${meeting.id}`}
 								key={meeting.id}
 							>
@@ -131,17 +126,6 @@ export function MeetingList() {
 									</h3>
 									<span className="text-sm text-slate-500">
 										{meeting.chartCount} 譜面
-									</span>
-								</div>
-								<div className="mt-5 flex items-center gap-3">
-									<div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-										<div
-											className="h-full rounded-full bg-emerald-500"
-											style={{ width: `${progress}%` }}
-										/>
-									</div>
-									<span className="text-xs tabular-nums text-slate-500">
-										{meeting.passedCount} / {meeting.totalCount} 合格
 									</span>
 								</div>
 							</Link>
