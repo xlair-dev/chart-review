@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadCatalog } from "@/lib/server/catalog";
+import { maxChartUploadSizeBytes } from "@/lib/server/chart-upload";
 import { chartDirectory, database } from "@/lib/server/database";
 
 export const runtime = "nodejs";
@@ -40,6 +41,21 @@ export async function POST(
 	if (!meeting)
 		return Response.json({ error: "FB 会が見つかりません。" }, { status: 404 });
 
+	let maxUploadSizeBytes: number;
+	try {
+		maxUploadSizeBytes = maxChartUploadSizeBytes();
+	} catch (error) {
+		return Response.json(
+			{
+				error:
+					error instanceof Error
+						? error.message
+						: "譜面アップロード上限の設定が不正です。",
+			},
+			{ status: 500 },
+		);
+	}
+
 	const form = await request.formData();
 	const musicId = form.get("musicId");
 	const difficulty = form.get("difficulty");
@@ -58,14 +74,16 @@ export async function POST(
 			extension as "c2s" | "sus" | "ugc",
 		) ||
 		file.size === 0 ||
-		file.size > 16 * 1024 * 1024
+		file.size > maxUploadSizeBytes
 	) {
 		return Response.json(
 			{
-				error:
-					"有効な C2S、SUS、UGC 譜面と難易度を選んでください（16 MB 以下）。",
+				error: `有効な C2S、SUS、UGC 譜面と難易度を選んでください（${Math.floor(maxUploadSizeBytes / 1024 / 1024)} MiB 以下）。`,
 			},
-			{ status: 400 },
+			{
+				status:
+					file instanceof File && file.size > maxUploadSizeBytes ? 413 : 400,
+			},
 		);
 	}
 
