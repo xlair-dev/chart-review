@@ -21,6 +21,10 @@ const sheetPixelsPerBeat = 100;
 const sheetCursorRatio = 0.82;
 const playfieldLookBehindBeats = 1;
 const sheetTileHeight = 16_000;
+const playfieldSideWidthScale = 1.2;
+const playfieldUpperRiseScale = 2.2;
+/** The approach window represents a finite depth range in the perspective projection. */
+const playfieldFarDistance = 4;
 
 export interface ChartComment {
 	id: string;
@@ -85,6 +89,10 @@ function colorWithAlpha(color: string, alpha: number): string {
 	const green = Number.parseInt(value.slice(2, 4), 16);
 	const blue = Number.parseInt(value.slice(4, 6), 16);
 	return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+	return Math.max(minimum, Math.min(maximum, value));
 }
 
 function canvasScale(width: number, height: number): number {
@@ -196,10 +204,6 @@ function pathPoints(note: Note): RawPathPoint[] {
 	return [];
 }
 
-function laneCoordinates(lane: Lane): [number, number] {
-	return laneRange(lane);
-}
-
 function samplePathSegment(
 	start: RawPathPoint,
 	controls: RawPathPoint[],
@@ -211,7 +215,7 @@ function samplePathSegment(
 	for (let sample = 0; sample <= sampleCount; sample += 1) {
 		const progress = sample / sampleCount;
 		const points = controlPoints.map((point) => {
-			const [laneStart, laneEnd] = laneCoordinates(point.lane);
+			const [laneStart, laneEnd] = laneRange(point.lane);
 			return [laneStart, laneEnd] as const;
 		});
 		for (let depth = points.length - 1; depth > 0; depth -= 1) {
@@ -508,11 +512,10 @@ function paintPlayfield(
 		return center - fieldWidth / 2 + (fieldWidth * lane) / 20;
 	};
 	const lanePoint = (lane: number, y: number): [number, number] => {
-		const sideWidthScale = 1.2;
 		const lowerWidth =
-			Math.abs(baseLaneX(2, y) - baseLaneX(1, y)) * sideWidthScale;
+			Math.abs(baseLaneX(2, y) - baseLaneX(1, y)) * playfieldSideWidthScale;
 		const lowerRise = lowerWidth * Math.tan(Math.PI / 4);
-		const upperRise = lowerWidth * 2.2;
+		const upperRise = lowerWidth * playfieldUpperRiseScale;
 		if (lane === 1) return [baseLaneX(2, y) - lowerWidth, y - lowerRise];
 		if (lane === 0)
 			return [baseLaneX(2, y) - lowerWidth, y - lowerRise - upperRise];
@@ -525,7 +528,7 @@ function paintPlayfield(
 		lane: number,
 		depth: number,
 	): [number, number] => {
-		const progress = Math.max(0, Math.min(1, depth));
+		const progress = clamp(depth, 0, 1);
 		const [topX, topY] = lanePoint(lane, horizonY);
 		const [bottomX, bottomY] = lanePoint(lane, floorY);
 		return [
@@ -578,14 +581,14 @@ function paintPlayfield(
 
 	const approachBeats = 6 / noteSpeed;
 	const perspectiveDepth = (beat: number) => {
-		const normalizedDistance = Math.max(
+		const normalizedDistance = clamp(
+			1 - (beat - currentBeat) / approachBeats,
 			0,
-			Math.min(1, 1 - (beat - currentBeat) / approachBeats),
+			1,
 		);
-		const farDistance = 4;
 		return (
 			normalizedDistance /
-			(farDistance - (farDistance - 1) * normalizedDistance)
+			(playfieldFarDistance - (playfieldFarDistance - 1) * normalizedDistance)
 		);
 	};
 	const yAtBeat = (beat: number) => {
