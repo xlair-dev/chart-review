@@ -512,7 +512,8 @@ function paintPlayfield(
 			0,
 			Math.min(1, (y - horizonY) / (floorY - horizonY)),
 		);
-		const lowerWidth = Math.abs(baseLaneX(2, y) - baseLaneX(1, y)) * depth;
+		const sideDepth = Math.max(0.4, depth);
+		const lowerWidth = Math.abs(baseLaneX(2, y) - baseLaneX(1, y)) * sideDepth;
 		const lowerRise = lowerWidth * Math.tan(Math.PI / 4);
 		const upperRise = lowerWidth * 2.2;
 		if (lane === 1) return [baseLaneX(2, y) - lowerWidth, y - lowerRise];
@@ -579,12 +580,20 @@ function paintPlayfield(
 	context.stroke();
 
 	const approachBeats = 6 / noteSpeed;
-	const yAtBeat = (beat: number) => {
-		const depth = Math.max(
+	const perspectiveDepth = (beat: number) => {
+		const normalizedDistance = Math.max(
 			0,
 			Math.min(1, 1 - (beat - currentBeat) / approachBeats),
 		);
-		return horizonY + depth ** 1.7 * (floorY - horizonY);
+		const farDistance = 4;
+		return (
+			normalizedDistance /
+			(farDistance - (farDistance - 1) * normalizedDistance)
+		);
+	};
+	const yAtBeat = (beat: number) => {
+		const depth = perspectiveDepth(beat);
+		return horizonY + depth * (floorY - horizonY);
 	};
 	context.strokeStyle = "#334155";
 	context.lineWidth = 1;
@@ -611,14 +620,8 @@ function paintPlayfield(
 		for (let index = 1; index < path.length; index += 1) {
 			const previous = path[index - 1];
 			const point = path[index];
-			const previousDepth = Math.max(
-				0,
-				Math.min(1, 1 - (previous.position - currentBeat) / approachBeats),
-			);
-			const pointDepth = Math.max(
-				0,
-				Math.min(1, 1 - (point.position - currentBeat) / approachBeats),
-			);
+			const previousDepth = perspectiveDepth(previous.position);
+			const pointDepth = perspectiveDepth(point.position);
 			const [previousLeft, previousYOnLane] = renderedLanePointAtDepth(
 				previous.laneStart,
 				previousDepth,
@@ -691,10 +694,7 @@ function paintPlayfield(
 		const [startLane, endLane] = laneRange(note.lane);
 		const headIsVisible = distance >= -1;
 		const headY = Math.max(horizonY, Math.min(floorY, yAtBeat(notePosition)));
-		const headDepth = Math.max(
-			0,
-			Math.min(1, 1 - (notePosition - currentBeat) / approachBeats),
-		);
+		const headDepth = perspectiveDepth(notePosition);
 		const [headLeft, headLeftY] = renderedLanePointAtDepth(
 			startLane,
 			headDepth,
@@ -721,27 +721,13 @@ function paintPlayfield(
 			for (let segment = 0; segment < sustainSegments; segment += 1) {
 				const startRatio = segment / sustainSegments;
 				const endRatio = (segment + 1) / sustainSegments;
-				const segmentStartDepth = Math.max(
-					0,
-					Math.min(
-						1,
-						1 -
-							(sustainStartVisible +
-								(sustainEndVisible - sustainStartVisible) * startRatio -
-								currentBeat) /
-								approachBeats,
-					),
+				const segmentStartDepth = perspectiveDepth(
+					sustainStartVisible +
+						(sustainEndVisible - sustainStartVisible) * startRatio,
 				);
-				const segmentEndDepth = Math.max(
-					0,
-					Math.min(
-						1,
-						1 -
-							(sustainStartVisible +
-								(sustainEndVisible - sustainStartVisible) * endRatio -
-								currentBeat) /
-								approachBeats,
-					),
+				const segmentEndDepth = perspectiveDepth(
+					sustainStartVisible +
+						(sustainEndVisible - sustainStartVisible) * endRatio,
 				);
 				const [segmentStartLeft, segmentStartLeftY] = renderedLanePointAtDepth(
 					startLane,
@@ -766,18 +752,18 @@ function paintPlayfield(
 			context.fill();
 			context.globalAlpha = 1;
 		}
-		const perspective = (headY - horizonY) / (floorY - horizonY);
 		if (!headIsVisible || headY >= floorY || headY < horizonY) continue;
 		const gameX = (headLeft + headRight) / 2 - headWidth / 2;
 		const gameY = (headLeftY + headRightY) / 2;
 		const headAngle = Math.atan2(headVectorY, headVectorX);
+		const headHeight = 4 + headDepth * 5;
 		paintNoteHead(
 			context,
 			note,
 			gameX,
 			gameY,
 			headWidth,
-			7 + perspective * 8,
+			headHeight,
 			headAngle,
 		);
 	}
