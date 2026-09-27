@@ -1,5 +1,6 @@
 import "server-only";
 import type { CatalogItem } from "@/lib/catalog-model";
+import { fetchXlairApi } from "@/lib/server/xlair-api";
 
 type CatalogCache = {
 	value?: CatalogItem[];
@@ -30,18 +31,7 @@ export async function loadCatalog(): Promise<CatalogItem[]> {
 }
 
 async function fetchCatalog(): Promise<CatalogItem[]> {
-	const serverUrl = process.env.CHART_REVIEW_SERVER_URL;
-	const deviceToken = process.env.CHART_REVIEW_DEVICE_TOKEN;
-	if (!serverUrl || !deviceToken) {
-		throw new Error(
-			"CHART_REVIEW_SERVER_URL と CHART_REVIEW_DEVICE_TOKEN を設定してください。",
-		);
-	}
-
-	const response = await fetch(new URL("/sync", serverUrl), {
-		cache: "no-store",
-		headers: { Authorization: `Bearer ${deviceToken}` },
-	});
+	const response = await fetchXlairApi("/sync");
 	if (!response.ok) {
 		throw new Error(
 			`楽曲カタログを取得できませんでした（${response.status}）。`,
