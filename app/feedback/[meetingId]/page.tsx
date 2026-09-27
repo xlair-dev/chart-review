@@ -1,6 +1,6 @@
 import Link from "next/link";
+import { FeedbackBreadcrumbs } from "@/components/feedback/feedback-breadcrumbs";
 import { MeetingDetail } from "@/components/feedback/meeting-detail";
-import { WorkspaceTabs } from "@/components/workspace-tabs";
 
 export default async function MeetingPage({
 	params,
@@ -9,7 +9,7 @@ export default async function MeetingPage({
 }) {
 	const { meetingId } = await params;
 	return (
-		<main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-8 sm:px-10 sm:py-12">
+		<main className="mx-auto min-h-screen w-full max-w-[1500px] px-4 py-6 sm:px-8">
 			<header className="flex items-center justify-between border-b border-slate-200 pb-5">
 				<Link
 					className="text-sm font-bold tracking-[0.2em] text-slate-800"
@@ -22,7 +22,13 @@ export default async function MeetingPage({
 					すべての会
 				</Link>
 			</header>
-			<WorkspaceTabs />
+			<FeedbackBreadcrumbs
+				items={[
+					{ href: "/", label: "トップ" },
+					{ href: "/feedback", label: "フィードバック会" },
+					{ label: "会の譜面" },
+				]}
+			/>
 			<MeetingDetail meetingId={meetingId} />
 		</main>
 	);

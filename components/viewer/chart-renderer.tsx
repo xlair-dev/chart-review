@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+	type ReactNode,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import type { ChartData, Lane, Note } from "@/lib/chart-model";
 import { positionValue } from "@/lib/chart-position";
 
@@ -11,6 +17,29 @@ const sideOrder = [
 	"rightUpper",
 ] as const;
 const laneCount = 20;
+const sheetPixelsPerBeat = 100;
+const sheetCursorRatio = 0.82;
+const playfieldLookBehindBeats = 1;
+const sheetTileHeight = 16_000;
+
+export interface ChartComment {
+	id: string;
+	displayName: string;
+	position: number;
+	lanePosition: number;
+	body: string;
+}
+
+export interface ChartCommentComposer {
+	position: number;
+	lanePosition: number;
+	body: string;
+	isSaving: boolean;
+	displayNameField: ReactNode;
+	onBodyChange: (body: string) => void;
+	onSubmit: () => void;
+	onCancel: () => void;
+}
 
 function laneRange(lane: Lane): [number, number] {
 	if (lane.type === "slider") {
@@ -26,6 +55,10 @@ function laneRange(lane: Lane): [number, number] {
 }
 
 function noteColor(note: Note): string {
+	if (note.kind.type === "tap") {
+		if (note.kind.tap.type === "xTap") return "#fbbf24";
+		if (note.kind.tap.type === "flick") return "#c084fc";
+	}
 	switch (note.kind.type) {
 		case "mine":
 			return "#fb7185";
@@ -35,6 +68,7 @@ function noteColor(note: Note): string {
 			return "#34d399";
 		case "slide":
 		case "exSlide":
+			return "#38bdf8";
 		case "airSlide":
 		case "airCrush":
 			return "#c084fc";
@@ -43,6 +77,69 @@ function noteColor(note: Note): string {
 		default:
 			return "#38bdf8";
 	}
+}
+
+function colorWithAlpha(color: string, alpha: number): string {
+	const value = color.slice(1);
+	const red = Number.parseInt(value.slice(0, 2), 16);
+	const green = Number.parseInt(value.slice(2, 4), 16);
+	const blue = Number.parseInt(value.slice(4, 6), 16);
+	return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function canvasScale(width: number, height: number): number {
+	const devicePixelRatio = window.devicePixelRatio || 1;
+	const maxCanvasArea = 128_000_000;
+	const maxCanvasDimension = 32_767;
+	return Math.min(
+		devicePixelRatio,
+		maxCanvasDimension / width,
+		maxCanvasDimension / height,
+		Math.sqrt(maxCanvasArea / (width * height)),
+	);
+}
+
+function sheetPositionStyle(position: number, end: number): string {
+	const ratio = 1 - position / end;
+	return `calc(${ratio * 100}% + ${36 - ratio * 60}px)`;
+}
+
+function sheetLaneStyle(lane: number): string {
+	const ratio = lane / 20;
+	return `calc(${ratio * 100}% + ${34 - ratio * 52}px)`;
+}
+
+function paintNoteHead(
+	context: CanvasRenderingContext2D,
+	note: Note,
+	x: number,
+	y: number,
+	width: number,
+	height: number,
+) {
+	const color = noteColor(note);
+	const isHoldHead =
+		note.kind.type === "hold" ||
+		note.kind.type === "exHold" ||
+		note.kind.type === "airHold";
+	if (!isHoldHead) {
+		context.fillStyle = color;
+		context.beginPath();
+		context.roundRect(x, y - height / 2, width, height, height * 0.4);
+		context.fill();
+		return;
+	}
+	context.fillStyle = colorWithAlpha(color, 0.24);
+	context.beginPath();
+	context.roundRect(x, y - height / 2, width, height, height * 0.4);
+	context.fill();
+	context.strokeStyle = colorWithAlpha(color, 0.72);
+	context.lineWidth = Math.max(1.5, height * 0.24);
+	context.lineCap = "round";
+	context.beginPath();
+	context.moveTo(x + Math.min(2, width / 4), y);
+	context.lineTo(x + width - Math.min(2, width / 4), y);
+	context.stroke();
 }
 
 function chartEnd(chart: ChartData): number {
@@ -65,42 +162,241 @@ function chartEnd(chart: ChartData): number {
 	);
 }
 
-function pathPoints(note: Note): { position: number; lane: Lane }[] {
+type RawPathPoint = {
+	position: number;
+	lane: Lane;
+	kind: "visible" | "control" | "invisible";
+};
+
+function pathPoints(note: Note): RawPathPoint[] {
 	if (note.kind.type === "slide" || note.kind.type === "exSlide") {
 		return note.kind.points.map((point) => ({
 			position: positionValue(point.position),
 			lane: point.lane,
+			kind: point.kind,
 		}));
 	}
 	if (note.kind.type === "airSlide" || note.kind.type === "airCrush") {
 		return note.kind.points.map((point) => ({
 			position: positionValue(point.position),
 			lane: point.lane,
+			kind: point.kind,
 		}));
 	}
 	return [];
 }
 
+function laneCoordinates(lane: Lane): [number, number] {
+	return laneRange(lane);
+}
+
+function samplePathSegment(
+	start: RawPathPoint,
+	controls: RawPathPoint[],
+	finish: RawPathPoint,
+): RawPathPoint[] {
+	const controlPoints = [start, ...controls, finish];
+	const sampleCount = Math.max(8, controls.length * 16);
+	const samples: RawPathPoint[] = [];
+	for (let sample = 0; sample <= sampleCount; sample += 1) {
+		const progress = sample / sampleCount;
+		const points = controlPoints.map((point) => {
+			const [laneStart, laneEnd] = laneCoordinates(point.lane);
+			return [laneStart, laneEnd] as const;
+		});
+		for (let depth = points.length - 1; depth > 0; depth -= 1) {
+			for (let index = 0; index < depth; index += 1) {
+				points[index] = [
+					points[index][0] +
+						(points[index + 1][0] - points[index][0]) * progress,
+					points[index][1] +
+						(points[index + 1][1] - points[index][1]) * progress,
+				];
+			}
+		}
+		samples.push({
+			position: start.position + (finish.position - start.position) * progress,
+			lane: {
+				type: "slider",
+				start: points[0][0] - 2,
+				width: points[0][1] - points[0][0],
+			},
+			kind: "visible",
+		});
+	}
+	return samples;
+}
+
+function renderedPathPoints(note: Note): RawPathPoint[] {
+	const source: RawPathPoint[] = [
+		{
+			position: positionValue(note.position),
+			lane: note.lane,
+			kind: "visible",
+		},
+		...pathPoints(note),
+	];
+	if (source.length < 2) return [];
+
+	const result: RawPathPoint[] = [];
+	let start = source[0];
+	let index = 1;
+	while (index < source.length) {
+		const controls: RawPathPoint[] = [];
+		while (index < source.length && source[index].kind === "control") {
+			controls.push(source[index]);
+			index += 1;
+		}
+		if (index >= source.length) break;
+		const finish = source[index];
+		const segment =
+			controls.length > 0
+				? samplePathSegment(start, controls, finish)
+				: [start, finish];
+		result.push(...(result.length > 0 ? segment.slice(1) : segment));
+		start = finish;
+		index += 1;
+	}
+	return result;
+}
+
+interface PlayfieldPathPoint {
+	position: number;
+	laneStart: number;
+	laneEnd: number;
+}
+
+function playfieldPathPoints(
+	note: Note,
+	currentBeat: number,
+	approachBeats: number,
+): PlayfieldPathPoint[] {
+	const source = renderedPathPoints(note).filter(
+		(point, index, points) =>
+			index === 0 || point.position >= points[index - 1].position,
+	);
+	if (source.length < 2) return [];
+
+	// A slider must be clipped at the judgment line, not at its original start lane.
+	const minimum = currentBeat;
+	const maximum = currentBeat + approachBeats;
+	const from = Math.max(minimum, source[0].position);
+	const to = Math.min(maximum, source.at(-1)?.position ?? from);
+	if (to <= from) return [];
+
+	const pointAt = (position: number): PlayfieldPathPoint => {
+		for (let index = 1; index < source.length; index += 1) {
+			const start = source[index - 1];
+			const finish = source[index];
+			if (finish.position < position || finish.position <= start.position) {
+				continue;
+			}
+			const progress = Math.max(
+				0,
+				Math.min(
+					1,
+					(position - start.position) / (finish.position - start.position),
+				),
+			);
+			const [startLane, startLaneEnd] = laneRange(start.lane);
+			const [finishLane, finishLaneEnd] = laneRange(finish.lane);
+			return {
+				position,
+				laneStart: startLane + (finishLane - startLane) * progress,
+				laneEnd: startLaneEnd + (finishLaneEnd - startLaneEnd) * progress,
+			};
+		}
+		const last = source.at(-1);
+		if (!last) return { position, laneStart: 2, laneEnd: 18 };
+		const [laneStart, laneEnd] = laneRange(last.lane);
+		return { position, laneStart, laneEnd };
+	};
+
+	const result = [
+		pointAt(from),
+		...source
+			.slice(1, -1)
+			.filter((point) => point.position > from && point.position < to)
+			.map((point) => {
+				const [laneStart, laneEnd] = laneRange(point.lane);
+				return { ...point, laneStart, laneEnd };
+			}),
+		pointAt(to),
+	];
+	return result.filter(
+		(point, index) =>
+			index === 0 || point.position > result[index - 1].position,
+	);
+}
+
+function isTapHead(note: Note): boolean {
+	return note.kind.type === "tap" || note.kind.type === "exTap";
+}
+
+function noteEndPosition(note: Note): number {
+	if ("end" in note.kind) return positionValue(note.kind.end);
+	const points = pathPoints(note);
+	return points.reduce(
+		(end, point) => Math.max(end, point.position),
+		positionValue(note.position),
+	);
+}
+
+function measureBoundaries(chart: ChartData, end: number): number[] {
+	const measures = [...chart.measureLengths].sort(
+		(left, right) => left.measure - right.measure,
+	);
+	if (measures.length === 0) {
+		return Array.from(
+			{ length: Math.ceil(end / 4) + 1 },
+			(_, index) => index * 4,
+		);
+	}
+
+	const boundaries: number[] = [];
+	let duration = 4;
+	let measure = 0;
+	let beat = 0;
+	let lengthIndex = 0;
+	while (beat <= end + duration) {
+		while (
+			lengthIndex < measures.length &&
+			measures[lengthIndex].measure <= measure
+		) {
+			duration = Math.max(0.01, positionValue(measures[lengthIndex].length));
+			lengthIndex += 1;
+		}
+		boundaries.push(beat);
+		beat += duration;
+		measure += 1;
+	}
+	return boundaries;
+}
+
 function paintSheet(
 	canvas: HTMLCanvasElement,
 	chart: ChartData,
-	currentBeat: number,
+	displayEnd: number,
+	sheetHeight: number,
+	tileTop: number,
 ) {
 	const context = canvas.getContext("2d");
 	if (!context) return;
 	const width = canvas.clientWidth;
-	const height = canvas.clientHeight;
-	const ratio = window.devicePixelRatio || 1;
-	canvas.width = width * ratio;
-	canvas.height = height * ratio;
-	context.scale(ratio, ratio);
+	const tileHeight = canvas.clientHeight;
+	if (width <= 0 || tileHeight <= 0 || sheetHeight <= 0) return;
+	const ratio = canvasScale(width, tileHeight);
+	canvas.width = Math.max(1, Math.floor(width * ratio));
+	canvas.height = Math.max(1, Math.floor(tileHeight * ratio));
+	context.setTransform(ratio, 0, 0, ratio, 0, 0);
+	context.translate(0, -tileTop);
 	context.fillStyle = "#0f172a";
-	context.fillRect(0, 0, width, height);
+	context.fillRect(0, tileTop, width, tileHeight);
 	const left = 34;
 	const right = width - 18;
-	const top = (canvas.parentElement?.clientHeight ?? 36) * 0.82;
-	const end = chartEnd(chart);
-	const bottom = top + height - (canvas.parentElement?.clientHeight ?? 0);
+	const top = 36;
+	const end = displayEnd;
+	const bottom = sheetHeight - 24;
 	const laneWidth = (right - left) / laneCount;
 
 	for (let lane = 0; lane <= laneCount; lane++) {
@@ -113,7 +409,7 @@ function paintSheet(
 		context.stroke();
 	}
 	for (let beat = 0; beat <= end; beat++) {
-		const y = top + (beat / end) * (bottom - top);
+		const y = bottom - (beat / end) * (bottom - top);
 		context.strokeStyle = beat % 4 === 0 ? "#475569" : "#1e293b";
 		context.beginPath();
 		context.moveTo(left, y);
@@ -121,63 +417,74 @@ function paintSheet(
 		context.stroke();
 	}
 
-	for (const note of chart.notes) {
+	const notes = [...chart.notes].sort(
+		(left, right) => Number(isTapHead(left)) - Number(isTapHead(right)),
+	);
+	for (const note of notes) {
 		const [startLane, endLane] = laneRange(note.lane);
 		const x = left + startLane * laneWidth + 2;
 		const noteWidth = Math.max(4, (endLane - startLane) * laneWidth - 4);
-		const y = top + (positionValue(note.position) / end) * (bottom - top);
+		const y = bottom - (positionValue(note.position) / end) * (bottom - top);
 		const endPosition =
 			"end" in note.kind ? positionValue(note.kind.end) : undefined;
 		context.fillStyle = noteColor(note);
-		const points = [
-			{ position: positionValue(note.position), lane: note.lane },
-			...pathPoints(note),
-		];
+		const points = renderedPathPoints(note);
 		if (points.length > 1) {
-			context.strokeStyle = noteColor(note);
-			context.lineWidth = Math.max(3, laneWidth * 0.5);
-			context.beginPath();
-			points.forEach((point, index) => {
-				const [pathStart, pathEnd] = laneRange(point.lane);
-				const pathX = left + ((pathStart + pathEnd) / 2) * laneWidth;
-				const pathY = top + (point.position / end) * (bottom - top);
-				if (index === 0) context.moveTo(pathX, pathY);
-				else context.lineTo(pathX, pathY);
-			});
-			context.stroke();
+			const color = noteColor(note);
+			context.lineCap = "round";
+			context.lineJoin = "round";
+			for (let index = 1; index < points.length; index += 1) {
+				const previous = points[index - 1];
+				const point = points[index];
+				const [previousStart, previousEnd] = laneRange(previous.lane);
+				const [pointStart, pointEnd] = laneRange(point.lane);
+				const previousY = bottom - (previous.position / end) * (bottom - top);
+				const pointY = bottom - (point.position / end) * (bottom - top);
+				const previousLeft = left + previousStart * laneWidth;
+				const previousRight = left + previousEnd * laneWidth;
+				const pointLeft = left + pointStart * laneWidth;
+				const pointRight = left + pointEnd * laneWidth;
+				context.fillStyle = colorWithAlpha(color, 0.22);
+				context.beginPath();
+				context.moveTo(previousLeft, previousY);
+				context.lineTo(previousRight, previousY);
+				context.lineTo(pointRight, pointY);
+				context.lineTo(pointLeft, pointY);
+				context.closePath();
+				context.fill();
+				context.strokeStyle = colorWithAlpha(color, 0.7);
+				context.lineWidth = 2.5;
+				context.beginPath();
+				context.moveTo((previousLeft + previousRight) / 2, previousY);
+				context.lineTo((pointLeft + pointRight) / 2, pointY);
+				context.stroke();
+			}
 		}
 		if (endPosition !== undefined) {
-			const endY = top + (endPosition / end) * (bottom - top);
+			const endY = bottom - (endPosition / end) * (bottom - top);
 			context.globalAlpha = 0.45;
-			context.fillRect(x + noteWidth * 0.35, y, noteWidth * 0.3, endY - y);
+			context.fillRect(x, Math.min(y, endY), noteWidth, Math.abs(endY - y));
 			context.globalAlpha = 1;
 		}
-		context.beginPath();
-		context.roundRect(x, y - 5, noteWidth, 10, 4);
-		context.fill();
+		paintNoteHead(context, note, x, y, noteWidth, 10);
 	}
-	const cursorY = top + (currentBeat / end) * (bottom - top);
-	context.strokeStyle = "#fb7185";
-	context.lineWidth = 2;
-	context.beginPath();
-	context.moveTo(left, cursorY);
-	context.lineTo(right, cursorY);
-	context.stroke();
 }
 
 function paintPlayfield(
 	canvas: HTMLCanvasElement,
 	chart: ChartData,
 	currentBeat: number,
+	noteSpeed: number,
 ) {
 	const context = canvas.getContext("2d");
 	if (!context) return;
 	const width = canvas.clientWidth;
 	const height = canvas.clientHeight;
+	if (width <= 0 || height <= 0) return;
 	const ratio = window.devicePixelRatio || 1;
 	canvas.width = width * ratio;
 	canvas.height = height * ratio;
-	context.scale(ratio, ratio);
+	context.setTransform(ratio, 0, 0, ratio, 0, 0);
 	context.fillStyle = "#020617";
 	context.fillRect(0, 0, width, height);
 	const horizonY = height * 0.24;
@@ -237,17 +544,106 @@ function paintPlayfield(
 	context.lineTo(laneX(20, floorY) + 8, floorY);
 	context.stroke();
 
-	const approachBeats = 8;
+	const approachBeats = 6 / noteSpeed;
 	const yAtBeat = (beat: number) => {
-		const depth = 1 - (beat - currentBeat) / approachBeats;
+		const depth = Math.max(
+			0,
+			Math.min(1, 1 - (beat - currentBeat) / approachBeats),
+		);
 		return horizonY + depth ** 1.7 * (floorY - horizonY);
 	};
+	context.strokeStyle = "#334155";
+	context.lineWidth = 1;
+	for (const beat of measureBoundaries(chart, chartEnd(chart))) {
+		if (
+			beat < currentBeat - playfieldLookBehindBeats ||
+			beat > currentBeat + approachBeats
+		)
+			continue;
+		const y = Math.max(horizonY, Math.min(floorY, yAtBeat(beat)));
+		context.beginPath();
+		context.moveTo(laneX(0, y), y);
+		context.lineTo(laneX(20, y), y);
+		context.stroke();
+	}
+	const drawPath = (note: Note, path: PlayfieldPathPoint[]) => {
+		if (path.length < 2) return;
+		const color = noteColor(note);
+		context.lineCap = "round";
+		context.lineJoin = "round";
+		for (let index = 1; index < path.length; index += 1) {
+			const previous = path[index - 1];
+			const point = path[index];
+			const previousDepth = Math.max(
+				0,
+				Math.min(1, 1 - (previous.position - currentBeat) / approachBeats),
+			);
+			const pointDepth = Math.max(
+				0,
+				Math.min(1, 1 - (point.position - currentBeat) / approachBeats),
+			);
+			const previousY = Math.max(
+				horizonY,
+				Math.min(floorY, horizonY + previousDepth ** 1.7 * (floorY - horizonY)),
+			);
+			const pointY = Math.max(
+				horizonY,
+				Math.min(floorY, horizonY + pointDepth ** 1.7 * (floorY - horizonY)),
+			);
+			const previousLeft = laneX(previous.laneStart, previousY);
+			const previousRight = laneX(previous.laneEnd, previousY);
+			const pointLeft = laneX(point.laneStart, pointY);
+			const pointRight = laneX(point.laneEnd, pointY);
+			const previousCenter = (previousLeft + previousRight) / 2;
+			const pointCenter = (pointLeft + pointRight) / 2;
+			context.fillStyle = colorWithAlpha(color, 0.22);
+			context.beginPath();
+			context.moveTo(previousLeft, previousY);
+			context.lineTo(previousRight, previousY);
+			context.lineTo(pointRight, pointY);
+			context.lineTo(pointLeft, pointY);
+			context.closePath();
+			context.fill();
+			context.strokeStyle = colorWithAlpha(color, 0.7);
+			context.lineWidth = 2.5;
+			context.beginPath();
+			context.moveTo(previousCenter, previousY);
+			context.lineTo(pointCenter, pointY);
+			context.stroke();
+		}
+	};
+	for (const note of chart.notes) {
+		drawPath(note, playfieldPathPoints(note, currentBeat, approachBeats));
+	}
 	for (const note of chart.notes) {
 		const notePosition = positionValue(note.position);
 		const distance = notePosition - currentBeat;
 		const sustainEnd = "end" in note.kind ? positionValue(note.kind.end) : null;
-		const visibleEnd = sustainEnd ?? notePosition;
-		if (visibleEnd < currentBeat - 1 || distance > approachBeats) continue;
+		const visibleEnd = noteEndPosition(note);
+		const sustainStartVisible =
+			sustainEnd === null
+				? null
+				: Math.max(notePosition, currentBeat - playfieldLookBehindBeats);
+		const sustainEndVisible =
+			sustainEnd === null
+				? null
+				: Math.min(sustainEnd, currentBeat + approachBeats);
+		const isSustainVisible =
+			sustainStartVisible !== null &&
+			sustainEndVisible !== null &&
+			sustainStartVisible <= sustainEndVisible;
+		const path = playfieldPathPoints(note, currentBeat, approachBeats);
+		const isPathVisible =
+			path.length > 1 &&
+			notePosition <= currentBeat + approachBeats &&
+			visibleEnd >= currentBeat;
+		if (
+			!isSustainVisible &&
+			!isPathVisible &&
+			(visibleEnd < currentBeat - playfieldLookBehindBeats ||
+				distance > approachBeats)
+		)
+			continue;
 		const [startLane, endLane] = laneRange(note.lane);
 		const headIsVisible = distance >= -1;
 		const headY = Math.max(horizonY, Math.min(floorY, yAtBeat(notePosition)));
@@ -255,20 +651,21 @@ function paintPlayfield(
 			4,
 			laneX(endLane, headY) - laneX(startLane, headY) - 4,
 		);
-		if (sustainEnd !== null && visibleEnd > notePosition) {
+		if (
+			isSustainVisible &&
+			sustainStartVisible !== null &&
+			sustainEndVisible !== null
+		) {
 			const sustainStartY = Math.max(
 				horizonY,
-				Math.min(floorY, yAtBeat(Math.max(notePosition, currentBeat - 1))),
+				Math.min(floorY, yAtBeat(sustainStartVisible)),
 			);
 			const sustainEndY = Math.max(
 				horizonY,
-				Math.min(
-					floorY,
-					yAtBeat(Math.min(visibleEnd, currentBeat + approachBeats)),
-				),
+				Math.min(floorY, yAtBeat(sustainEndVisible)),
 			);
 			const sustainWidthAt = (y: number) =>
-				Math.max(4, laneX(endLane, y) - laneX(startLane, y) - 4) * 0.38;
+				Math.max(4, laneX(endLane, y) - laneX(startLane, y) - 4);
 			const startCenter =
 				(laneX(startLane, sustainStartY) + laneX(endLane, sustainStartY)) / 2;
 			const endCenter =
@@ -290,34 +687,15 @@ function paintPlayfield(
 			context.fill();
 			context.globalAlpha = 1;
 		}
-		if (!headIsVisible || headY >= floorY || headY < horizonY) continue;
 		const perspective = (headY - horizonY) / (floorY - horizonY);
-		const points = pathPoints(note);
-		if (points.length > 1) {
-			context.strokeStyle = noteColor(note);
-			context.lineWidth = 3 + perspective * 5;
-			context.beginPath();
-			[
-				{ position: positionValue(note.position), lane: note.lane },
-				...points,
-			].forEach((point, index) => {
-				const pointDistance = point.position - currentBeat;
-				if (pointDistance < -1 || pointDistance > approachBeats) return;
-				const pointDepth = 1 - pointDistance / approachBeats;
-				const pointY = horizonY + pointDepth ** 1.7 * (floorY - horizonY);
-				const [pointStart, pointEnd] = laneRange(point.lane);
-				const pointX = laneX((pointStart + pointEnd) / 2, pointY);
-				if (index === 0) context.moveTo(pointX, pointY);
-				else context.lineTo(pointX, pointY);
-			});
-			context.stroke();
-		}
+		if (!headIsVisible || headY >= floorY || headY < horizonY) continue;
 		const gameX = laneX(startLane, headY) + 2;
 		const gameWidth = headWidth;
-		context.fillStyle = noteColor(note);
-		context.fillRect(
+		paintNoteHead(
+			context,
+			note,
 			gameX,
-			headY - 5 - perspective * 4,
+			headY - perspective * 4,
 			gameWidth,
 			7 + perspective * 8,
 		);
@@ -328,70 +706,210 @@ export function ChartRenderer({
 	chart,
 	position,
 	onPositionChange,
+	onCommentPositionChange,
+	onCommentDelete,
+	onCommentSelect,
+	commentComposer,
+	comments = [],
+	commentListEnabled = false,
+	noteSpeed = 1,
+	displayNoteSpeed,
+	onNoteSpeedChange,
+	onNoteSpeedCommit,
+	isPlaying = false,
 }: {
 	chart: ChartData;
 	position?: number;
 	onPositionChange?: (position: number) => void;
+	onCommentPositionChange?: (position: number, lanePosition: number) => void;
+	onCommentDelete?: (comment: ChartComment) => void;
+	onCommentSelect?: (comment: ChartComment) => void;
+	commentComposer?: ChartCommentComposer;
+	comments?: ChartComment[];
+	commentListEnabled?: boolean;
+	noteSpeed?: number;
+	displayNoteSpeed?: string;
+	onNoteSpeedChange?: (speed: string) => void;
+	onNoteSpeedCommit?: () => void;
+	isPlaying?: boolean;
 }) {
-	const sheet = useRef<HTMLCanvasElement>(null);
+	const sheetTiles = useRef<Array<HTMLCanvasElement | null>>([]);
+	const sheetContent = useRef<HTMLDivElement>(null);
+	const sheetViewport = useRef<HTMLDivElement>(null);
 	const playfield = useRef<HTMLCanvasElement>(null);
 	const programmaticScrollTop = useRef<number | undefined>(undefined);
+	const preserveScrollAfterClick = useRef(false);
+	const preservedScrollTopAfterClick = useRef<number | undefined>(undefined);
 	const [localPosition, setLocalPosition] = useState(0);
+	const [sheetViewportHeight, setSheetViewportHeight] = useState(0);
+	const [isCommentListOpen, setIsCommentListOpen] = useState(true);
 	const currentBeat = position ?? localPosition;
 	const end = chartEnd(chart);
+	const sheetPaddingBeats = Math.max(
+		4,
+		Math.ceil(
+			(sheetViewportHeight * sheetCursorRatio) /
+				(sheetPixelsPerBeat * noteSpeed),
+		) + 1,
+	);
+	const sheetEnd = end + sheetPaddingBeats;
+	const sheetHeight =
+		sheetEnd * sheetPixelsPerBeat * noteSpeed +
+		Math.max(sheetViewportHeight, 600);
+	const sheetTileCount = Math.max(1, Math.ceil(sheetHeight / sheetTileHeight));
+	const currentBeatRef = useRef(currentBeat);
+	currentBeatRef.current = currentBeat;
 
 	useEffect(() => {
-		const draw = () => {
-			if (sheet.current) paintSheet(sheet.current, chart, currentBeat);
-			if (playfield.current)
-				paintPlayfield(playfield.current, chart, currentBeat);
-		};
-		draw();
-		const observer = new ResizeObserver(draw);
-		if (sheet.current) observer.observe(sheet.current);
-		if (playfield.current) observer.observe(playfield.current);
+		const viewport = sheetViewport.current;
+		if (!viewport) return;
+		const updateViewportHeight = () =>
+			setSheetViewportHeight(viewport.clientHeight);
+		updateViewportHeight();
+		const observer = new ResizeObserver(updateViewportHeight);
+		observer.observe(viewport);
 		return () => observer.disconnect();
-	}, [chart, currentBeat]);
+	}, []);
 	useEffect(() => {
+		const draw = () => {
+			const contentHeight = sheetContent.current?.clientHeight ?? sheetHeight;
+			for (const [index, canvas] of sheetTiles.current.entries()) {
+				if (!canvas) continue;
+				paintSheet(
+					canvas,
+					chart,
+					sheetEnd,
+					contentHeight,
+					index * sheetTileHeight,
+				);
+			}
+			if (playfield.current)
+				paintPlayfield(
+					playfield.current,
+					chart,
+					currentBeatRef.current,
+					noteSpeed,
+				);
+		};
+		const frame = requestAnimationFrame(draw);
+		const observer = new ResizeObserver(draw);
+		if (sheetContent.current) observer.observe(sheetContent.current);
+		if (playfield.current) observer.observe(playfield.current);
+		return () => {
+			cancelAnimationFrame(frame);
+			observer.disconnect();
+		};
+	}, [chart, noteSpeed, sheetEnd, sheetHeight]);
+	useEffect(() => {
+		if (playfield.current)
+			paintPlayfield(playfield.current, chart, currentBeat, noteSpeed);
+	}, [chart, currentBeat, noteSpeed]);
+	useLayoutEffect(() => {
 		if (position === undefined) return;
-		setLocalPosition(position);
-		const canvas = sheet.current;
-		const viewport = canvas?.parentElement;
-		if (!canvas || !viewport) return;
-		const contentHeight = canvas.clientHeight - viewport.clientHeight;
-		const scrollTop = Math.max(0, (position / end) * contentHeight);
+		if (preserveScrollAfterClick.current) {
+			const viewport = sheetContent.current?.parentElement;
+			const scrollTop = preservedScrollTopAfterClick.current;
+			if (viewport && scrollTop !== undefined) {
+				programmaticScrollTop.current = scrollTop;
+				viewport.scrollTop = scrollTop;
+			}
+			preservedScrollTopAfterClick.current = undefined;
+			preserveScrollAfterClick.current = false;
+			return;
+		}
+		const content = sheetContent.current;
+		const viewport = content?.parentElement;
+		if (!content || !viewport) return;
+		const contentHeight = content.clientHeight - viewport.clientHeight;
+		const sheetTop = 36;
+		const sheetBottom = content.clientHeight - 24;
+		const cursorY = viewport.clientHeight * sheetCursorRatio;
+		const positionY =
+			sheetBottom - (position / sheetEnd) * (sheetBottom - sheetTop);
+		const scrollTop = Math.max(0, Math.min(contentHeight, positionY - cursorY));
 		if (Math.abs(viewport.scrollTop - scrollTop) > 2) {
 			programmaticScrollTop.current = scrollTop;
 			viewport.scrollTop = scrollTop;
 		}
-	}, [position, end]);
+	}, [position, sheetEnd]);
 
 	function changePosition(beat: number) {
 		setLocalPosition(beat);
 		onPositionChange?.(beat);
 	}
 
+	function handleSheetClick(event: React.MouseEvent<HTMLElement>) {
+		event.preventDefault();
+		const content = sheetContent.current;
+		if (!content) return;
+		const viewport = content.parentElement;
+		const contentRect = content.getBoundingClientRect();
+		const y = event.clientY - contentRect.top;
+		const sheetTop = 36;
+		const sheetBottom = content.clientHeight - 24;
+		const beat = ((sheetBottom - y) / (sheetBottom - sheetTop)) * sheetEnd;
+		const nextPosition = Math.max(0, Math.min(end, beat));
+		const left = 34;
+		const right = content.clientWidth - 18;
+		const lanePosition = Math.max(
+			0,
+			Math.min(
+				20,
+				((event.clientX - contentRect.left - left) / (right - left)) * 20,
+			),
+		);
+		if (onCommentPositionChange) {
+			onCommentPositionChange(nextPosition, lanePosition);
+			return;
+		}
+		preserveScrollAfterClick.current = true;
+		preservedScrollTopAfterClick.current = viewport?.scrollTop;
+		changePosition(nextPosition);
+	}
+
+	function handleSheetKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+		if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+		event.preventDefault();
+		changePosition(
+			Math.max(
+				0,
+				Math.min(end, currentBeat + (event.key === "ArrowUp" ? 1 : -1)),
+			),
+		);
+	}
+
 	function seekTo(beat: number) {
-		const canvas = sheet.current;
-		const viewport = canvas?.parentElement;
-		if (canvas && viewport) {
-			const contentHeight = canvas.clientHeight - viewport.clientHeight;
-			viewport.scrollTop = Math.max(0, (beat / end) * contentHeight);
+		const content = sheetContent.current;
+		const viewport = content?.parentElement;
+		if (content && viewport) {
+			const contentHeight = content.clientHeight - viewport.clientHeight;
+			const sheetTop = 36;
+			const sheetBottom = content.clientHeight - 24;
+			const cursorY = viewport.clientHeight * sheetCursorRatio;
+			const positionY =
+				sheetBottom - (beat / sheetEnd) * (sheetBottom - sheetTop);
+			viewport.scrollTop = Math.max(
+				0,
+				Math.min(contentHeight, positionY - cursorY),
+			);
 		}
 		changePosition(beat);
 	}
 
 	return (
-		<div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
-			<section className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 p-4">
+		<div
+			className={`grid gap-5 ${commentListEnabled ? (isCommentListOpen ? "xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)_minmax(16rem,0.7fr)]" : "xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)_2.5rem]") : "xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]"}`}
+		>
+			<section className="relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 p-4">
 				<h2 className="mb-3 text-sm font-semibold text-white">譜面シート</h2>
 				<div
 					className="relative max-h-[70vh] overflow-y-auto rounded-lg"
+					ref={sheetViewport}
 					onScroll={(event) => {
 						const viewport = event.currentTarget;
-						const canvas = sheet.current;
-						if (!canvas) return;
-						const contentHeight = canvas.clientHeight - viewport.clientHeight;
+						const content = sheetContent.current;
+						if (!content) return;
+						const contentHeight = content.clientHeight - viewport.clientHeight;
 						const expectedScrollTop = programmaticScrollTop.current;
 						programmaticScrollTop.current = undefined;
 						if (
@@ -400,34 +918,163 @@ export function ChartRenderer({
 						) {
 							return;
 						}
-						const beat = (viewport.scrollTop / contentHeight) * end;
+						if (contentHeight <= 0) return;
+						const sheetTop = 36;
+						const sheetBottom = content.clientHeight - 24;
+						const cursorY = viewport.clientHeight * sheetCursorRatio;
+						const positionY = viewport.scrollTop + cursorY;
+						const beat =
+							((sheetBottom - positionY) / (sheetBottom - sheetTop)) * sheetEnd;
 						changePosition(Math.max(0, Math.min(end, beat)));
 					}}
 				>
-					<canvas
-						aria-label="譜面全体"
-						className="block w-full"
-						ref={sheet}
-						style={{ height: `calc(${Math.max(1800, end * 80)}px + 70vh)` }}
-					/>
+					<div
+						className="relative cursor-pointer"
+						ref={sheetContent}
+						onClick={handleSheetClick}
+						onKeyDown={handleSheetKeyDown}
+						role="application"
+						style={{ height: `${sheetHeight}px` }}
+					>
+						{Array.from({ length: sheetTileCount }, (_, index) => {
+							const tileTop = index * sheetTileHeight;
+							const tileHeight = Math.min(
+								sheetTileHeight,
+								sheetHeight - tileTop,
+							);
+							return (
+								<canvas
+									aria-label={index === 0 ? "譜面全体" : undefined}
+									className="block w-full"
+									key={tileTop}
+									ref={(canvas) => {
+										sheetTiles.current[index] = canvas;
+									}}
+									style={{ height: `${tileHeight}px` }}
+								/>
+							);
+						})}
+						{commentComposer && (
+							<div
+								aria-hidden="true"
+								className="pointer-events-none absolute z-20 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-sky-400 shadow-[0_0_0_3px_rgba(56,189,248,0.35)]"
+								style={{
+									left: sheetLaneStyle(commentComposer.lanePosition),
+									top: sheetPositionStyle(commentComposer.position, sheetEnd),
+								}}
+							/>
+						)}
+						{!isPlaying &&
+							comments.map((comment) => (
+								<button
+									className="absolute z-10 max-w-[min(18rem,70%)] -translate-y-1/2 rounded-xl border border-sky-200/80 bg-sky-50/60 px-3 py-2 text-left text-xs text-slate-800 shadow-lg backdrop-blur-sm transition hover:border-rose-300 hover:bg-rose-50/80"
+									key={comment.id}
+									type="button"
+									onClick={(event) => {
+										event.stopPropagation();
+										onCommentDelete?.(comment);
+									}}
+									style={{
+										top: sheetPositionStyle(comment.position, sheetEnd),
+										left: sheetLaneStyle(comment.lanePosition),
+										transform: "translate(-50%, -50%)",
+									}}
+								>
+									<strong className="block text-sky-900">
+										{comment.displayName}
+									</strong>
+									<span className="mt-1 block whitespace-pre-wrap leading-5">
+										{comment.body}
+									</span>
+								</button>
+							))}
+					</div>
 					<div className="pointer-events-none sticky bottom-[18%] h-0 border-t-2 border-rose-400 shadow-[0_0_12px_#fb7185]" />
 				</div>
-				<label className="mt-4 block text-xs text-slate-300">
-					<span className="mb-2 flex justify-between">
-						<span>再生位置</span>
-						<span>{currentBeat.toFixed(2)} 拍</span>
-					</span>
-					<input
-						aria-label="再生位置"
-						className="w-full accent-rose-400"
-						max={end}
-						min={0}
-						onChange={(event) => seekTo(Number(event.target.value))}
-						step={0.01}
-						type="range"
-						value={currentBeat}
-					/>
-				</label>
+				{commentComposer && (
+					<div className="absolute inset-x-4 bottom-4 z-20 rounded-xl border border-sky-200 bg-white/95 p-4 text-slate-900 shadow-xl backdrop-blur-sm">
+						<div className="flex items-start justify-between gap-4">
+							<div>
+								<p className="text-sm font-semibold">この位置にコメント</p>
+								<p className="mt-1 text-xs text-slate-500">
+									{commentComposer.position.toFixed(2)} 拍 ・ レーン{" "}
+									{commentComposer.lanePosition.toFixed(1)}
+								</p>
+							</div>
+							<button
+								className="text-sm text-slate-500 hover:text-slate-800"
+								onClick={commentComposer.onCancel}
+								type="button"
+							>
+								閉じる
+							</button>
+						</div>
+						<div className="mt-3">{commentComposer.displayNameField}</div>
+						<textarea
+							className="mt-3 w-full rounded-lg border border-slate-300 p-3 text-sm"
+							maxLength={2000}
+							onChange={(event) =>
+								commentComposer.onBodyChange(event.target.value)
+							}
+							placeholder="気づいた点を書く"
+							required
+							rows={3}
+							value={commentComposer.body}
+						/>
+						<button
+							className="mt-3 w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+							disabled={
+								commentComposer.isSaving || !commentComposer.body.trim()
+							}
+							onClick={commentComposer.onSubmit}
+							type="button"
+						>
+							{commentComposer.isSaving ? "保存中…" : "コメントを追加"}
+						</button>
+					</div>
+				)}
+				<div className="mt-4 flex items-end gap-4 text-xs text-slate-300">
+					<label className="min-w-0 flex-1">
+						<span className="mb-2 flex justify-between">
+							<span>再生位置</span>
+							<span>{currentBeat.toFixed(2)} 拍</span>
+						</span>
+						<input
+							aria-label="再生位置"
+							className="w-full accent-rose-400"
+							max={end}
+							min={0}
+							onChange={(event) => seekTo(Number(event.target.value))}
+							step={0.01}
+							type="range"
+							value={currentBeat}
+						/>
+					</label>
+					{onNoteSpeedChange && (
+						<label className="w-24 shrink-0">
+							<span className="mb-2 block">ノーツ速度</span>
+							<div className="flex items-center gap-1">
+								<input
+									aria-label="ノーツ速度"
+									className="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-right text-slate-100"
+									max={2}
+									min={0.5}
+									onChange={(event) => {
+										onNoteSpeedChange(event.target.value);
+									}}
+									onBlur={onNoteSpeedCommit}
+									onKeyDown={(event) => {
+										if (event.key === "Enter") onNoteSpeedCommit?.();
+									}}
+									step={0.05}
+									type="number"
+									value={displayNoteSpeed ?? (noteSpeed / 2.6).toFixed(2)}
+								/>
+								<span>倍</span>
+							</div>
+						</label>
+					)}
+				</div>
 			</section>
 			<section className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 p-4">
 				<h2 className="mb-3 text-sm font-semibold text-white">
@@ -439,6 +1086,70 @@ export function ChartRenderer({
 					ref={playfield}
 				/>
 			</section>
+			{commentListEnabled && (
+				<aside
+					className={
+						isCommentListOpen
+							? "rounded-2xl border border-slate-200 bg-white p-4"
+							: "rounded-2xl border border-sky-300 bg-sky-50/30 shadow-sm"
+					}
+				>
+					{isCommentListOpen ? (
+						<>
+							<div className="flex items-center justify-between gap-3">
+								<h2 className="text-sm font-semibold text-slate-800">
+									コメント一覧
+								</h2>
+								<button
+									aria-label="コメント一覧を縮小"
+									className="text-lg text-sky-700 hover:text-sky-900"
+									onClick={() => setIsCommentListOpen(false)}
+									type="button"
+								>
+									&raquo;
+								</button>
+							</div>
+							{comments.length === 0 ? (
+								<p className="mt-4 text-sm text-slate-500">
+									コメントはまだありません。
+								</p>
+							) : (
+								<ul className="mt-3 divide-y divide-slate-100">
+									{comments.map((comment) => (
+										<li key={comment.id}>
+											<button
+												className="block w-full rounded-lg py-3 text-left transition first:pt-0 last:pb-0 hover:bg-sky-50 hover:text-sky-900"
+												onClick={() => onCommentSelect?.(comment)}
+												type="button"
+											>
+												<strong className="block text-sm text-slate-800">
+													{comment.displayName}
+												</strong>
+												<span className="mt-1 block text-xs text-slate-400">
+													{comment.position.toFixed(2)} 拍 ・ レーン{" "}
+													{comment.lanePosition.toFixed(1)}
+												</span>
+												<span className="mt-1 block whitespace-pre-wrap text-sm leading-5 text-slate-600">
+													{comment.body}
+												</span>
+											</button>
+										</li>
+									))}
+								</ul>
+							)}
+						</>
+					) : (
+						<button
+							aria-label="コメント一覧を展開"
+							className="flex h-full min-h-24 w-full items-center justify-center rounded-2xl text-lg text-sky-800 transition hover:bg-sky-100 hover:text-sky-900"
+							onClick={() => setIsCommentListOpen(true)}
+							type="button"
+						>
+							&laquo;
+						</button>
+					)}
+				</aside>
+			)}
 		</div>
 	);
 }

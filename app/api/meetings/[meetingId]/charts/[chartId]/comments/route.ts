@@ -17,7 +17,8 @@ export async function GET(
 	const comments = database
 		.prepare(`
 		SELECT id, display_name AS displayName, position_numerator AS numerator,
-		       position_denominator AS denominator, body, created_at AS createdAt
+		       position_denominator AS denominator, lane_position AS lanePosition,
+		       body, created_at AS createdAt
 		FROM comments WHERE meeting_chart_id = ? ORDER BY created_at
 	`)
 		.all(chartId);
@@ -37,10 +38,12 @@ export async function POST(
 	const input = (await request.json()) as {
 		displayName?: unknown;
 		position?: { numerator?: unknown; denominator?: unknown };
+		lanePosition?: unknown;
 		body?: unknown;
 	};
 	const numerator = input.position?.numerator;
 	const denominator = input.position?.denominator;
+	const lanePosition = input.lanePosition;
 	if (
 		typeof input.displayName !== "string" ||
 		input.displayName.trim().length === 0 ||
@@ -52,7 +55,11 @@ export async function POST(
 		typeof denominator !== "string" ||
 		!/^\d+$/.test(numerator) ||
 		!/^\d+$/.test(denominator) ||
-		BigInt(denominator) === BigInt(0)
+		BigInt(denominator) === BigInt(0) ||
+		typeof lanePosition !== "number" ||
+		!Number.isFinite(lanePosition) ||
+		lanePosition < 0 ||
+		lanePosition > 20
 	) {
 		return Response.json(
 			{ error: "表示名・コメント・譜面位置を確認してください。" },
@@ -63,8 +70,8 @@ export async function POST(
 	const createdAt = new Date().toISOString();
 	database
 		.prepare(`
-		INSERT INTO comments (id, meeting_chart_id, display_name, position_numerator, position_denominator, body, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO comments (id, meeting_chart_id, display_name, position_numerator, position_denominator, lane_position, body, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 		.run(
 			id,
@@ -72,6 +79,7 @@ export async function POST(
 			input.displayName.trim(),
 			numerator,
 			denominator,
+			lanePosition,
 			input.body.trim(),
 			createdAt,
 		);
@@ -81,9 +89,40 @@ export async function POST(
 			displayName: input.displayName.trim(),
 			numerator,
 			denominator,
+			lanePosition,
 			body: input.body.trim(),
 			createdAt,
 		},
 		{ status: 201 },
 	);
+}
+
+export async function DELETE(
+	request: Request,
+	{ params }: { params: Promise<{ meetingId: string; chartId: string }> },
+) {
+	const { meetingId, chartId } = await params;
+	const chart = database
+		.prepare("SELECT 1 FROM meeting_charts WHERE meeting_id = ? AND id = ?")
+		.get(meetingId, chartId);
+	if (!chart)
+		return Response.json({ error: "譜面が見つかりません。" }, { status: 404 });
+	const input = (await request.json().catch(() => ({}))) as {
+		commentId?: unknown;
+	};
+	if (typeof input.commentId !== "string" || input.commentId.length === 0) {
+		return Response.json(
+			{ error: "コメントを確認してください。" },
+			{ status: 400 },
+		);
+	}
+	const result = database
+		.prepare("DELETE FROM comments WHERE id = ? AND meeting_chart_id = ?")
+		.run(input.commentId, chartId);
+	if (result.changes === 0)
+		return Response.json(
+			{ error: "コメントが見つかりません。" },
+			{ status: 404 },
+		);
+	return new Response(null, { status: 204 });
 }

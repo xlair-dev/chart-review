@@ -43,12 +43,6 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 	const [isSaving, setIsSaving] = useState(false);
 	const [isReplaceConfirmationOpen, setIsReplaceConfirmationOpen] =
 		useState(false);
-	const [chartPendingDeletion, setChartPendingDeletion] =
-		useState<MeetingChart>();
-	const [isDeletingChart, setIsDeletingChart] = useState(false);
-	const [editingDescriptionId, setEditingDescriptionId] = useState<string>();
-	const [descriptionDraft, setDescriptionDraft] = useState("");
-	const [isSavingDescription, setIsSavingDescription] = useState(false);
 	const fileInput = useRef<HTMLInputElement>(null);
 
 	const loadData = useCallback(async () => {
@@ -146,50 +140,6 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 			);
 		} finally {
 			setIsSaving(false);
-		}
-	}
-
-	async function deleteChart(chart: MeetingChart) {
-		setIsDeletingChart(true);
-		try {
-			const response = await fetch(
-				`/api/meetings/${meetingId}/charts/${chart.id}`,
-				{ method: "DELETE" },
-			);
-			if (!response.ok) {
-				setError(await errorMessage(response));
-				return;
-			}
-			setChartPendingDeletion(undefined);
-			await loadData();
-		} catch {
-			setError("譜面を削除できませんでした。通信状態を確認してください。");
-		} finally {
-			setIsDeletingChart(false);
-		}
-	}
-
-	async function saveDescription(chart: MeetingChart) {
-		setIsSavingDescription(true);
-		try {
-			const response = await fetch(
-				`/api/meetings/${meetingId}/charts/${chart.id}`,
-				{
-					method: "PATCH",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ description: descriptionDraft }),
-				},
-			);
-			if (!response.ok) {
-				setError(await errorMessage(response));
-				return;
-			}
-			setEditingDescriptionId(undefined);
-			await loadData();
-		} catch {
-			setError("説明を保存できませんでした。通信状態を確認してください。");
-		} finally {
-			setIsSavingDescription(false);
 		}
 	}
 
@@ -297,18 +247,6 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 				open={isReplaceConfirmationOpen}
 				title="譜面を差し替えますか？"
 			/>
-			<ConfirmationDialog
-				confirmLabel="譜面とコメントを削除"
-				description="この会から譜面を削除します。譜面に付いたコメントも削除されます。"
-				isPending={isDeletingChart}
-				onCancel={() => setChartPendingDeletion(undefined)}
-				onConfirm={() =>
-					chartPendingDeletion && void deleteChart(chartPendingDeletion)
-				}
-				open={Boolean(chartPendingDeletion)}
-				title="譜面を削除しますか？"
-			/>
-
 			<section className="mt-10">
 				<div className="mb-4 flex items-baseline justify-between gap-4">
 					<h2 className="text-xl font-semibold">この会の譜面</h2>
@@ -328,89 +266,31 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 								(entry) => entry.difficulty === chart.difficulty,
 							);
 							return (
-								<li
-									className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5"
-									key={chart.id}
-								>
-									<div>
-										<p className="font-semibold">
-											{item?.music.title ?? chart.musicId} — {chart.difficulty}{" "}
-											{sheet?.level ?? ""}
-										</p>
-										{editingDescriptionId === chart.id ? (
-											<div className="mt-2">
-												<textarea
-													aria-label="譜面の説明"
-													className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-													onChange={(event) =>
-														setDescriptionDraft(event.target.value)
-													}
-													rows={3}
-													value={descriptionDraft}
-												/>
-												<div className="mt-2 flex gap-3">
-													<button
-														className="text-sm font-medium text-sky-800 disabled:opacity-50"
-														disabled={isSavingDescription}
-														onClick={() => void saveDescription(chart)}
-														type="button"
-													>
-														{isSavingDescription ? "保存中…" : "説明を保存"}
-													</button>
-													<button
-														className="text-sm text-slate-500"
-														disabled={isSavingDescription}
-														onClick={() => setEditingDescriptionId(undefined)}
-														type="button"
-													>
-														キャンセル
-													</button>
-												</div>
-											</div>
-										) : (
-											<>
+								<li key={chart.id}>
+									<Link
+										className="block w-full rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-sky-300 hover:bg-sky-50/30 hover:shadow-sm"
+										href={`/feedback/${meetingId}/charts/${chart.id}`}
+									>
+										<div className="flex flex-wrap items-center justify-between gap-4">
+											<div>
+												<p className="font-semibold">
+													{item?.music.title ?? chart.musicId} —{" "}
+													{chart.difficulty} {sheet?.level ?? ""}
+												</p>
 												{chart.description && (
 													<p className="mt-1 text-sm leading-6 text-slate-600">
 														{chart.description}
 													</p>
 												)}
-												<button
-													className="mt-2 text-sm text-slate-500 hover:text-sky-800"
-													onClick={() => {
-														setDescriptionDraft(chart.description);
-														setEditingDescriptionId(chart.id);
-													}}
-													type="button"
-												>
-													説明を編集
-												</button>
-											</>
-										)}
-										<p className="mt-2 text-xs text-slate-400">
-											更新 {new Date(chart.uploadedAt).toLocaleString()}
-										</p>
-									</div>
-									<div className="flex items-center gap-4">
-										<Link
-											className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600"
-											href={`/feedback/${meetingId}/charts/${chart.id}`}
-										>
-											開く
-										</Link>
-										{!passed.some(
-											(entry) =>
-												entry.musicId === chart.musicId &&
-												entry.difficulty === chart.difficulty,
-										) && (
-											<button
-												className="text-sm text-slate-500 hover:text-rose-700"
-												onClick={() => setChartPendingDeletion(chart)}
-												type="button"
-											>
-												削除
-											</button>
-										)}
-									</div>
+												<p className="mt-2 text-xs text-slate-400">
+													更新 {new Date(chart.uploadedAt).toLocaleString()}
+												</p>
+											</div>
+											<span className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white">
+												開く
+											</span>
+										</div>
+									</Link>
 								</li>
 							);
 						})}
