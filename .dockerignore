@@ -1,0 +1,8 @@
+.env*
+.git
+.next
+data
+node_modules
+public/wasm
+wasm/chart-parser/target
+wasm/chart-parser/pkg

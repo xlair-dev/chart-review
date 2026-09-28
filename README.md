@@ -31,3 +31,20 @@ pnpm build                # Wasm と Next.js の本番ビルドを実行する
 pnpm lint                 # Biome の検査を実行する
 pnpm build:chart-parser   # 譜面パーサーを Wasm にビルドする
 ```
+
+## 本番環境
+
+Docker Compose で起動する場合は、`.env.example` を `.env` にコピーして本番用の値を設定する。
+
+`main` ブランチへの push で GitHub Actions が multi-platform の Docker イメージを GitHub Container Registry に publish する。
+
+```sh
+docker compose -f compose.yml pull
+docker compose -f compose.yml up -d
+```
+
+SQLite とアップロード譜面は `chart-review-data` ボリュームに保存される。停止する場合は次のコマンドを実行する。
+
+```sh
+docker compose -f compose.yml down
+```
