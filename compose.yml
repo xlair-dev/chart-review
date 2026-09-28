@@ -1,0 +1,23 @@
+services:
+  chart-review:
+    image: ${CHART_REVIEW_IMAGE:-ghcr.io/xlair-dev/chart-review:latest}
+    container_name: chart-review
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      CHART_REVIEW_DATA_DIR: /app/data
+      CHART_REVIEW_MAX_UPLOAD_SIZE_BYTES: ${CHART_REVIEW_MAX_UPLOAD_SIZE_BYTES:-52428800}
+      CHART_REVIEW_SERVER_URL: ${CHART_REVIEW_SERVER_URL:?CHART_REVIEW_SERVER_URL must be set}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:?AUTH0_DOMAIN must be set}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:?AUTH0_AUDIENCE must be set}
+      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID:?AUTH0_CLIENT_ID must be set}
+      AUTH0_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET:?AUTH0_CLIENT_SECRET must be set}
+    volumes:
+      - chart-review-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  chart-review-data:
