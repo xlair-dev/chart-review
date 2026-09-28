@@ -1,12 +1,19 @@
+# syntax=docker/dockerfile:1
+
 FROM rust:1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e AS wasm-builder
 
-RUN rustup target add wasm32-unknown-unknown \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+	--mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+	rustup target add wasm32-unknown-unknown \
 	&& cargo install wasm-pack --locked
 
 WORKDIR /src/wasm/chart-parser
 COPY wasm/chart-parser/Cargo.toml wasm/chart-parser/Cargo.lock ./
 COPY wasm/chart-parser/src ./src
-RUN wasm-pack build --target web --release --out-dir /out
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+	--mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+	--mount=type=cache,target=/src/wasm/chart-parser/target,sharing=locked \
+	wasm-pack build --target web --release --out-dir /out
 
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS dependencies
 
@@ -18,7 +25,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=chart-review-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+	pnpm install --frozen-lockfile
 
 FROM dependencies AS builder
 
