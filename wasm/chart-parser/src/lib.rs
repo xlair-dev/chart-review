@@ -8,15 +8,20 @@ use chart::{
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-/// Parses a chart using XLAIR interpretation rules and returns its shared chart model as JSON.
+/// Parses a chart using the selected interpretation rules and returns its shared chart model as JSON.
 ///
 /// `format` must be one of the supported file extensions: `c2s`, `sus`, or `ugc`.
 /// `source` follows the encodings accepted by `chart_converter::parse_bytes_with_mode`.
 #[wasm_bindgen]
-pub fn parse_chart_json(format: &str, source: &[u8]) -> Result<String, JsValue> {
+pub fn parse_chart_json(format: &str, mode: &str, source: &[u8]) -> Result<String, JsValue> {
     let format = chart_converter::Format::from_extension(format)
         .ok_or_else(|| JsValue::from_str("unsupported chart format"))?;
-    let chart = chart_converter::parse_bytes_with_mode(format, ChartMode::Xlair, source)
+    let mode = match mode {
+        "xlair" => ChartMode::Xlair,
+        "normal" => ChartMode::Normal,
+        _ => return Err(JsValue::from_str("unsupported chart mode")),
+    };
+    let chart = chart_converter::parse_bytes_with_mode(format, mode, source)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
     serde_json::to_string(&ChartData::from_chart(format.extension(), &chart))
         .map_err(|error| JsValue::from_str(&error.to_string()))
