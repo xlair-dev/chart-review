@@ -6,6 +6,9 @@ import type { CatalogItem } from "@/lib/catalog-model";
 import type { ChartData } from "@/lib/chart-model";
 import { type ChartMode, parseChartFile } from "@/lib/chart-parser";
 
+const fileSelectionClassName =
+	"mt-2 flex h-10 w-full cursor-pointer items-center rounded-lg border border-slate-300 px-3 text-sm font-normal leading-5 text-slate-700 hover:bg-slate-50";
+
 export function ChartFileLoader() {
 	const [catalog, setCatalog] = useState<CatalogItem[]>();
 	const [musicId, setMusicId] = useState("");
@@ -135,8 +138,10 @@ export function ChartFileLoader() {
 						{playground ? "音源" : "曲"}
 					</label>
 					{playground ? (
-						<span className="mt-2 flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-700 hover:bg-slate-50">
-							{audioFileName ?? "音源ファイルを選択"}
+						<span className={fileSelectionClassName}>
+							<span className="truncate">
+								{audioFileName ?? "音源ファイルを選択"}
+							</span>
 							<input
 								accept="audio/*"
 								className="sr-only"
@@ -175,8 +180,10 @@ export function ChartFileLoader() {
 				</div>
 				<label className="block text-sm font-medium text-slate-700">
 					譜面
-					<span className="mt-2 flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-700 hover:bg-slate-50">
-						{isLoading ? "解析中…" : (chartFileName ?? "譜面ファイルを選択")}
+					<span className={fileSelectionClassName}>
+						<span className="truncate">
+							{isLoading ? "解析中…" : (chartFileName ?? "譜面ファイルを選択")}
+						</span>
 						<input
 							accept=".c2s,.sus,.ugc"
 							className="sr-only"
