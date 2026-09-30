@@ -6,8 +6,9 @@ import type { CatalogItem } from "@/lib/catalog-model";
 import type { ChartData } from "@/lib/chart-model";
 import { type ChartMode, parseChartFile } from "@/lib/chart-parser";
 
-const fileSelectionClassName =
-	"mt-2 flex h-10 w-full cursor-pointer items-center rounded-lg border border-slate-300 px-3 text-sm font-normal leading-5 text-slate-700 hover:bg-slate-50";
+const fieldControlClassName =
+	"mt-2 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal leading-5";
+const fileSelectionClassName = `${fieldControlClassName} flex cursor-pointer items-center text-slate-700 hover:bg-slate-50`;
 
 export function ChartFileLoader() {
 	const [catalog, setCatalog] = useState<CatalogItem[]>();
@@ -157,7 +158,7 @@ export function ChartFileLoader() {
 						</span>
 					) : (
 						<select
-							className="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal"
+							className={`${fieldControlClassName} block`}
 							disabled={isLoadingCatalog}
 							id="catalog-music"
 							onChange={handleMusicChange}
