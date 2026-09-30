@@ -35,6 +35,7 @@ export function ChartPlayback({
 	comments = [],
 	allowLocalAudioSelection = true,
 	commentListEnabled = false,
+	audioSourceLabel,
 }: {
 	chart: ChartData;
 	audioSource?: string | null;
@@ -48,6 +49,7 @@ export function ChartPlayback({
 	comments?: ChartComment[];
 	allowLocalAudioSelection?: boolean;
 	commentListEnabled?: boolean;
+	audioSourceLabel?: string;
 }) {
 	const audio = useRef<HTMLAudioElement>(null);
 	const playbackFrame = useRef<number | undefined>(undefined);
@@ -277,9 +279,10 @@ export function ChartPlayback({
 					<div>
 						<h2 className="text-base font-semibold">音源と再生</h2>
 						<p className="mt-1 text-sm text-slate-600">
-							{audioSource
-								? "server から同期した音源を再生します。"
-								: "選択した音源はこのブラウザー内だけで使います。"}
+							{audioSourceLabel ??
+								(audioSource
+									? "server から同期した音源を再生します。"
+									: "選択した音源はこのブラウザー内だけで使います。")}
 							譜面に記録された音源オフセットに合わせて同期します。
 						</p>
 					</div>

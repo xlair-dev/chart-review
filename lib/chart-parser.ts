@@ -2,8 +2,14 @@ import type { ChartData, ChartFormat } from "@/lib/chart-model";
 
 interface ChartParserModule {
 	default: () => Promise<unknown>;
-	parse_chart_json: (format: string, source: Uint8Array) => string;
+	parse_chart_json: (
+		format: string,
+		mode: ChartMode,
+		source: Uint8Array,
+	) => string;
 }
+
+export type ChartMode = "normal" | "xlair";
 
 let chartParser: Promise<ChartParserModule> | undefined;
 
@@ -36,9 +42,12 @@ function chartFormat(file: File): ChartFormat {
 	throw new Error("C2S、SUS、UGC 形式の譜面を選んでください。");
 }
 
-export async function parseChartFile(file: File): Promise<ChartData> {
+export async function parseChartFile(
+	file: File,
+	mode: ChartMode = "xlair",
+): Promise<ChartData> {
 	const format = chartFormat(file);
 	const bytes = new Uint8Array(await file.arrayBuffer());
 	const module = await loadChartParser();
-	return JSON.parse(module.parse_chart_json(format, bytes)) as ChartData;
+	return JSON.parse(module.parse_chart_json(format, mode, bytes)) as ChartData;
 }
