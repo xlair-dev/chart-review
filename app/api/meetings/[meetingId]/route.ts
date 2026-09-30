@@ -1,5 +1,5 @@
 import { loadCatalog } from "@/lib/server/catalog";
-import { database } from "@/lib/server/database";
+import { getDatabase } from "@/lib/server/database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +9,7 @@ export async function GET(
 	{ params }: { params: Promise<{ meetingId: string }> },
 ) {
 	const { meetingId } = await params;
+	const database = getDatabase();
 	const meeting = database
 		.prepare(`
 		SELECT m.id, m.held_on AS heldOn, m.created_at AS createdAt,

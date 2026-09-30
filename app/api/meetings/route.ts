@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { loadCatalog } from "@/lib/server/catalog";
-import { database } from "@/lib/server/database";
+import { getDatabase } from "@/lib/server/database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+	const database = getDatabase();
 	try {
 		const catalog = await loadCatalog();
 		const totalCount = catalog.reduce(
@@ -42,6 +43,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
 	try {
+		const database = getDatabase();
 		const body = (await request.json()) as { heldOn?: unknown };
 		if (
 			typeof body.heldOn !== "string" ||

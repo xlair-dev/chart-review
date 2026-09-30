@@ -3,7 +3,7 @@ import { unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadCatalog } from "@/lib/server/catalog";
 import { maxChartUploadSizeBytes } from "@/lib/server/chart-upload";
-import { chartDirectory, database } from "@/lib/server/database";
+import { chartDirectory, getDatabase } from "@/lib/server/database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +13,7 @@ export async function GET(
 	{ params }: { params: Promise<{ meetingId: string }> },
 ) {
 	const { meetingId } = await params;
+	const database = getDatabase();
 	const meeting = database
 		.prepare("SELECT id FROM meetings WHERE id = ?")
 		.get(meetingId);
@@ -35,6 +36,7 @@ export async function POST(
 	{ params }: { params: Promise<{ meetingId: string }> },
 ) {
 	const { meetingId } = await params;
+	const database = getDatabase();
 	const meeting = database
 		.prepare("SELECT id FROM meetings WHERE id = ?")
 		.get(meetingId);
