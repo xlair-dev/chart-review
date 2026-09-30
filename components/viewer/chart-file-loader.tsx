@@ -102,39 +102,45 @@ export function ChartFileLoader() {
 
 	return (
 		<section className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
-			<label className="mb-6 flex items-center gap-3 text-sm font-medium text-slate-700">
-				<input
-					checked={playground}
-					className="size-4 accent-sky-700"
-					onChange={(event) => {
-						setPlayground(event.target.checked);
-						if (!event.target.checked) void changeChartMode("xlair");
-					}}
-					type="checkbox"
-				/>
-				Playground モード
-			</label>
-			<div>
-				<p className="text-xs font-semibold tracking-[0.18em] text-sky-700">
-					LOCAL CHART
-				</p>
-				<h2 className="mt-3 text-2xl font-semibold">曲と譜面を選ぶ</h2>
-				<p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
-					{playground
-						? "任意の音源と譜面を選び、解釈モードを切り替えて確認する。"
-						: "同期済みの曲を選び、譜面ファイルだけをブラウザー内で読み込んで確認する。"}
-				</p>
+			<div className="flex flex-wrap items-start justify-between gap-4">
+				<div>
+					<p className="text-xs font-semibold tracking-[0.18em] text-sky-700">
+						LOCAL CHART
+					</p>
+					<h2 className="mt-3 text-2xl font-semibold">曲と譜面を選ぶ</h2>
+					<p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+						曲と譜面を選び、譜面の内容をブラウザー上で確認する。
+					</p>
+				</div>
+				<label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-full border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+					<input
+						checked={playground}
+						className="size-4 accent-sky-700"
+						onChange={(event) => {
+							setPlayground(event.target.checked);
+							if (!event.target.checked) void changeChartMode("xlair");
+						}}
+						type="checkbox"
+					/>
+					Playground モード
+				</label>
 			</div>
 
-			{playground && (
-				<div className="mt-6 space-y-4">
-					<label className="block text-sm font-medium text-slate-700">
-						音源
-						<span className="mt-2 flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-2 font-normal hover:bg-slate-50">
+			<div className="mt-6 grid gap-4 sm:grid-cols-2">
+				<div>
+					<label
+						className="block text-sm font-medium text-slate-700"
+						htmlFor={playground ? "local-audio" : "catalog-music"}
+					>
+						{playground ? "音源" : "曲"}
+					</label>
+					{playground ? (
+						<span className="mt-2 flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-2 font-normal text-slate-700 hover:bg-slate-50">
 							{audioFileName ?? "音源ファイルを選択"}
 							<input
 								accept="audio/*"
 								className="sr-only"
+								id="local-audio"
 								onChange={(event) => {
 									const file = event.target.files?.[0];
 									setAudioUrl(file ? URL.createObjectURL(file) : undefined);
@@ -144,37 +150,11 @@ export function ChartFileLoader() {
 								type="file"
 							/>
 						</span>
-					</label>
-					<fieldset className="flex gap-4 text-sm text-slate-700">
-						<legend className="mb-2 font-medium">譜面の解釈</legend>
-						{(
-							[
-								["xlair", "XLAIR モード"],
-								["normal", "通常モード"],
-							] as const
-						).map(([mode, label]) => (
-							<label className="flex items-center gap-2" key={mode}>
-								<input
-									checked={chartMode === mode}
-									disabled={isLoading}
-									name="chart-mode"
-									onChange={() => void changeChartMode(mode)}
-									type="radio"
-								/>
-								{label}
-							</label>
-						))}
-					</fieldset>
-				</div>
-			)}
-
-			<div className="mt-6 grid gap-4 sm:grid-cols-2">
-				{!playground && (
-					<label className="block text-sm font-medium text-slate-700">
-						曲
+					) : (
 						<select
 							className="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2 font-normal"
 							disabled={isLoadingCatalog}
+							id="catalog-music"
 							onChange={handleMusicChange}
 							value={musicId}
 						>
@@ -191,8 +171,8 @@ export function ChartFileLoader() {
 									</option>
 								))}
 						</select>
-					</label>
-				)}
+					)}
+				</div>
 				<label className="block text-sm font-medium text-slate-700">
 					譜面
 					<span className="mt-2 flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-700 hover:bg-slate-50">
@@ -207,6 +187,35 @@ export function ChartFileLoader() {
 					</span>
 				</label>
 			</div>
+			{playground ? (
+				<fieldset className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-700">
+					<legend className="font-medium">譜面の解釈</legend>
+					{(
+						[
+							["xlair", "XLAIR モード"],
+							["normal", "通常モード"],
+						] as const
+					).map(([mode, label]) => (
+						<label className="flex items-center gap-2" key={mode}>
+							<input
+								checked={chartMode === mode}
+								disabled={isLoading}
+								name="chart-mode"
+								onChange={() => void changeChartMode(mode)}
+								type="radio"
+							/>
+							{label}
+						</label>
+					))}
+				</fieldset>
+			) : (
+				<p className="mt-4 flex items-center gap-3 text-sm text-slate-600">
+					<span className="font-medium text-slate-700">譜面の解釈</span>
+					<span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium">
+						XLAIR モード
+					</span>
+				</p>
+			)}
 
 			<div aria-live="polite" className="mt-6 rounded-xl bg-slate-50 p-5">
 				{error ? (
