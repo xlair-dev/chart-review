@@ -8,23 +8,29 @@ const dataDirectory = path.resolve(
 		path.join(process.cwd(), "data"),
 );
 // Keep this directory on persistent local storage; SQLite and uploaded charts live here.
-mkdirSync(dataDirectory, { recursive: true });
+export const chartDirectory = path.join(dataDirectory, "charts");
 
 const globalDatabase = globalThis as typeof globalThis & {
 	chartReviewDatabase?: Database.Database;
 };
 
-export const database =
-	globalDatabase.chartReviewDatabase ??
-	new Database(path.join(dataDirectory, "chart-review.sqlite"));
+/**
+ * Opens and initializes the database on demand so Next.js build workers do not
+ * race while importing API route modules.
+ */
+export function getDatabase(): Database.Database {
+	if (globalDatabase.chartReviewDatabase)
+		return globalDatabase.chartReviewDatabase;
 
-if (process.env.NODE_ENV !== "production") {
-	globalDatabase.chartReviewDatabase = database;
-}
-
-database.pragma("journal_mode = WAL");
-database.pragma("foreign_keys = ON");
-database.exec(`
+	mkdirSync(dataDirectory, { recursive: true });
+	mkdirSync(chartDirectory, { recursive: true });
+	const database = new Database(
+		path.join(dataDirectory, "chart-review.sqlite"),
+	);
+	try {
+		database.pragma("journal_mode = WAL");
+		database.pragma("foreign_keys = ON");
+		database.exec(`
 	CREATE TABLE IF NOT EXISTS meetings (
 		id TEXT PRIMARY KEY,
 		held_on TEXT NOT NULL,
@@ -64,18 +70,23 @@ database.exec(`
 	);
 `);
 
-const migrateCommentLanePosition = database.transaction(() => {
-	const commentColumns = database.pragma("table_info(comments)") as {
-		name: string;
-	}[];
-	if (!commentColumns.some((column) => column.name === "lane_position")) {
-		database.exec("ALTER TABLE comments ADD COLUMN lane_position REAL");
+		const migrateCommentLanePosition = database.transaction(() => {
+			const commentColumns = database.pragma("table_info(comments)") as {
+				name: string;
+			}[];
+			if (!commentColumns.some((column) => column.name === "lane_position")) {
+				database.exec("ALTER TABLE comments ADD COLUMN lane_position REAL");
+			}
+			database.exec(
+				"UPDATE comments SET lane_position = 10 WHERE lane_position IS NULL",
+			);
+		});
+		migrateCommentLanePosition.immediate();
+	} catch (error) {
+		database.close();
+		throw error;
 	}
-	database.exec(
-		"UPDATE comments SET lane_position = 10 WHERE lane_position IS NULL",
-	);
-});
-migrateCommentLanePosition.immediate();
 
-export const chartDirectory = path.join(dataDirectory, "charts");
-mkdirSync(chartDirectory, { recursive: true });
+	globalDatabase.chartReviewDatabase = database;
+	return database;
+}

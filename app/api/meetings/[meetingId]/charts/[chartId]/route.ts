@@ -1,6 +1,6 @@
 import { unlink } from "node:fs/promises";
 import path from "node:path";
-import { chartDirectory, database } from "@/lib/server/database";
+import { chartDirectory, getDatabase } from "@/lib/server/database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +10,7 @@ export async function PATCH(
 	{ params }: { params: Promise<{ meetingId: string; chartId: string }> },
 ) {
 	const { meetingId, chartId } = await params;
+	const database = getDatabase();
 	const body = (await request.json().catch(() => null)) as {
 		description?: unknown;
 	} | null;
@@ -35,6 +36,7 @@ export async function DELETE(
 	{ params }: { params: Promise<{ meetingId: string; chartId: string }> },
 ) {
 	const { meetingId, chartId } = await params;
+	const database = getDatabase();
 	const removeChart = database.transaction(() => {
 		const passed = database
 			.prepare(`

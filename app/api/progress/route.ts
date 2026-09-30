@@ -1,10 +1,11 @@
 import { loadCatalog } from "@/lib/server/catalog";
-import { database } from "@/lib/server/database";
+import { getDatabase } from "@/lib/server/database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+	const database = getDatabase();
 	try {
 		const catalog = await loadCatalog();
 		const totalCount = catalog.reduce(

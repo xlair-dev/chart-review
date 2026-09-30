@@ -1,5 +1,5 @@
 import { loadCatalog } from "@/lib/server/catalog";
-import { database } from "@/lib/server/database";
+import { getDatabase } from "@/lib/server/database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +9,7 @@ async function updatePass(
 	passed: boolean,
 ) {
 	const { musicId, difficulty } = await params;
+	const database = getDatabase();
 	if (!["basic", "advanced", "master"].includes(difficulty)) {
 		return Response.json(
 			{ error: "難易度が正しくありません。" },

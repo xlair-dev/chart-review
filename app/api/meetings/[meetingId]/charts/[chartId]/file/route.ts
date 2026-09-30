@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { chartDirectory, database } from "@/lib/server/database";
+import { chartDirectory, getDatabase } from "@/lib/server/database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +10,7 @@ export async function GET(
 	{ params }: { params: Promise<{ meetingId: string; chartId: string }> },
 ) {
 	const { meetingId, chartId } = await params;
+	const database = getDatabase();
 	const chart = database
 		.prepare(`
 		SELECT file_name AS fileName FROM meeting_charts WHERE meeting_id = ? AND id = ?
