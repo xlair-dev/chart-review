@@ -64,15 +64,18 @@ database.exec(`
 	);
 `);
 
-const commentColumns = database.pragma("table_info(comments)") as {
-	name: string;
-}[];
-if (!commentColumns.some((column) => column.name === "lane_position")) {
-	database.exec("ALTER TABLE comments ADD COLUMN lane_position REAL");
-}
-database.exec(
-	"UPDATE comments SET lane_position = 10 WHERE lane_position IS NULL",
-);
+const migrateCommentLanePosition = database.transaction(() => {
+	const commentColumns = database.pragma("table_info(comments)") as {
+		name: string;
+	}[];
+	if (!commentColumns.some((column) => column.name === "lane_position")) {
+		database.exec("ALTER TABLE comments ADD COLUMN lane_position REAL");
+	}
+	database.exec(
+		"UPDATE comments SET lane_position = 10 WHERE lane_position IS NULL",
+	);
+});
+migrateCommentLanePosition.immediate();
 
 export const chartDirectory = path.join(dataDirectory, "charts");
 mkdirSync(chartDirectory, { recursive: true });
