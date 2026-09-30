@@ -194,7 +194,7 @@ export function ChartFileLoader() {
 					</span>
 				</label>
 			</div>
-			{playground ? (
+			{playground && (
 				<fieldset className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-700">
 					<legend className="font-medium">譜面の解釈</legend>
 					{(
@@ -215,13 +215,6 @@ export function ChartFileLoader() {
 						</label>
 					))}
 				</fieldset>
-			) : (
-				<p className="mt-4 flex items-center gap-3 text-sm text-slate-600">
-					<span className="font-medium text-slate-700">譜面の解釈</span>
-					<span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium">
-						XLAIR モード
-					</span>
-				</p>
 			)}
 
 			<div aria-live="polite" className="mt-6 rounded-xl bg-slate-50 p-5">
