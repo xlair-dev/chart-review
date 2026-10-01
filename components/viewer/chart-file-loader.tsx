@@ -132,51 +132,55 @@ export function ChartFileLoader() {
 
 			<div className="mt-6 grid gap-4 sm:grid-cols-2">
 				<div>
-					<label
-						className="block text-sm font-medium text-slate-700"
-						htmlFor={playground ? "local-audio" : "catalog-music"}
-					>
-						{playground ? "音源" : "曲"}
-					</label>
 					{playground ? (
-						<span className={fileSelectionClassName}>
-							<span className="truncate">
-								{audioFileName ?? "音源ファイルを選択"}
+						<label className="block text-sm font-medium text-slate-700">
+							音源
+							<span className={fileSelectionClassName}>
+								<span className="truncate">
+									{audioFileName ?? "音源ファイルを選択"}
+								</span>
+								<input
+									accept="audio/*"
+									className="sr-only"
+									onChange={(event) => {
+										const file = event.target.files?.[0];
+										setAudioUrl(file ? URL.createObjectURL(file) : undefined);
+										setAudioFileName(file?.name);
+										event.target.value = "";
+									}}
+									type="file"
+								/>
 							</span>
-							<input
-								accept="audio/*"
-								className="sr-only"
-								id="local-audio"
-								onChange={(event) => {
-									const file = event.target.files?.[0];
-									setAudioUrl(file ? URL.createObjectURL(file) : undefined);
-									setAudioFileName(file?.name);
-									event.target.value = "";
-								}}
-								type="file"
-							/>
-						</span>
+						</label>
 					) : (
-						<select
-							className={`${fieldControlClassName} block`}
-							disabled={isLoadingCatalog}
-							id="catalog-music"
-							onChange={handleMusicChange}
-							value={musicId}
-						>
-							<option value="">
-								{isLoadingCatalog
-									? "曲一覧を読み込み中…"
-									: "曲を選択してください"}
-							</option>
-							{catalog
-								?.filter((item) => item.music.audio)
-								.map((item) => (
-									<option key={item.music.id} value={item.music.id}>
-										{item.music.title} — {item.music.artist}
-									</option>
-								))}
-						</select>
+						<>
+							<label
+								className="block text-sm font-medium text-slate-700"
+								htmlFor="catalog-music"
+							>
+								曲
+							</label>
+							<select
+								className={`${fieldControlClassName} block`}
+								disabled={isLoadingCatalog}
+								id="catalog-music"
+								onChange={handleMusicChange}
+								value={musicId}
+							>
+								<option value="">
+									{isLoadingCatalog
+										? "曲一覧を読み込み中…"
+										: "曲を選択してください"}
+								</option>
+								{catalog
+									?.filter((item) => item.music.audio)
+									.map((item) => (
+										<option key={item.music.id} value={item.music.id}>
+											{item.music.title} — {item.music.artist}
+										</option>
+									))}
+							</select>
+						</>
 					)}
 				</div>
 				<label className="block text-sm font-medium text-slate-700">
