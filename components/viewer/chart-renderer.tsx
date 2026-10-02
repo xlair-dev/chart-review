@@ -160,26 +160,6 @@ function paintNoteHead(
 	if (angle !== undefined) context.restore();
 }
 
-function chartEnd(chart: ChartData): number {
-	return Math.max(
-		4,
-		...chart.notes.flatMap((note) => [
-			positionValue(note.position),
-			...(note.kind.type === "hold" ||
-			note.kind.type === "exHold" ||
-			note.kind.type === "airHold"
-				? [positionValue(note.kind.end)]
-				: []),
-			...(note.kind.type === "slide" || note.kind.type === "exSlide"
-				? note.kind.points.map((point) => positionValue(point.position))
-				: []),
-			...(note.kind.type === "airSlide" || note.kind.type === "airCrush"
-				? note.kind.points.map((point) => positionValue(point.position))
-				: []),
-		]),
-	);
-}
-
 type RawPathPoint = {
 	position: number;
 	lane: Lane;
@@ -241,14 +221,18 @@ function samplePathSegment(
 	return samples;
 }
 
-function renderedPathPoints(note: Note): RawPathPoint[] {
+function renderedPathPoints(
+	note: Note,
+	path: RawPathPoint[] = pathPoints(note),
+): RawPathPoint[] {
+	if (path.length === 0) return [];
 	const source: RawPathPoint[] = [
 		{
 			position: positionValue(note.position),
 			lane: note.lane,
 			kind: "visible",
 		},
-		...pathPoints(note),
+		...path,
 	];
 	if (source.length < 2) return [];
 
@@ -281,14 +265,10 @@ interface PlayfieldPathPoint {
 }
 
 function playfieldPathPoints(
-	note: Note,
+	source: RawPathPoint[],
 	currentBeat: number,
 	approachBeats: number,
 ): PlayfieldPathPoint[] {
-	const source = renderedPathPoints(note).filter(
-		(point, index, points) =>
-			index === 0 || point.position >= points[index - 1].position,
-	);
 	if (source.length < 2) return [];
 
 	// A slider must be clipped at the judgment line, not at its original start lane.
@@ -347,15 +327,6 @@ function isTapHead(note: Note): boolean {
 	return note.kind.type === "tap" || note.kind.type === "exTap";
 }
 
-function noteEndPosition(note: Note): number {
-	if ("end" in note.kind) return positionValue(note.kind.end);
-	const points = pathPoints(note);
-	return points.reduce(
-		(end, point) => Math.max(end, point.position),
-		positionValue(note.position),
-	);
-}
-
 function measureBoundaries(chart: ChartData, end: number): number[] {
 	const measures = [...chart.measureLengths].sort(
 		(left, right) => left.measure - right.measure,
@@ -387,9 +358,126 @@ function measureBoundaries(chart: ChartData, end: number): number[] {
 	return boundaries;
 }
 
+interface PreparedNote {
+	index: number;
+	note: Note;
+	position: number;
+	endPosition: number;
+	sustainEnd: number | null;
+	laneStart: number;
+	laneEnd: number;
+	path: RawPathPoint[];
+	playfieldPath: RawPathPoint[];
+}
+
+interface ChartRenderData {
+	end: number;
+	measureBoundaries: number[];
+	spatialIndex: PreparedNote[];
+	spatialIndexTree: number[];
+	spatialIndexSize: number;
+}
+
+/** Parsed chart data is immutable while rendered, so derived geometry stays valid for this cache entry. */
+const chartRenderDataCache = new WeakMap<ChartData, ChartRenderData>();
+
+function renderDataFor(chart: ChartData): ChartRenderData {
+	const cached = chartRenderDataCache.get(chart);
+	if (cached) return cached;
+
+	let end = 4;
+	const notes = chart.notes.map((note, index): PreparedNote => {
+		const position = positionValue(note.position);
+		const rawPath = pathPoints(note);
+		let endPosition = position;
+		for (const point of rawPath) {
+			endPosition = Math.max(endPosition, point.position);
+		}
+		if ("end" in note.kind) {
+			endPosition = Math.max(endPosition, positionValue(note.kind.end));
+		}
+		const sustainEnd = "end" in note.kind ? positionValue(note.kind.end) : null;
+		end = Math.max(end, endPosition);
+		const path = renderedPathPoints(note, rawPath);
+		const [laneStart, laneEnd] = laneRange(note.lane);
+		return {
+			index,
+			note,
+			position,
+			endPosition,
+			sustainEnd,
+			laneStart,
+			laneEnd,
+			path,
+			playfieldPath: path.filter(
+				(point, pointIndex, points) =>
+					pointIndex === 0 || point.position >= points[pointIndex - 1].position,
+			),
+		};
+	});
+	const spatialIndex = [...notes].sort(
+		(left, right) => left.position - right.position || left.index - right.index,
+	);
+	let spatialIndexSize = 1;
+	while (spatialIndexSize < spatialIndex.length) spatialIndexSize *= 2;
+	const spatialIndexTree = Array(spatialIndexSize * 2).fill(
+		Number.NEGATIVE_INFINITY,
+	);
+	for (let index = 0; index < spatialIndex.length; index += 1) {
+		spatialIndexTree[spatialIndexSize + index] =
+			spatialIndex[index].endPosition;
+	}
+	for (let index = spatialIndexSize - 1; index > 0; index -= 1) {
+		spatialIndexTree[index] = Math.max(
+			spatialIndexTree[index * 2],
+			spatialIndexTree[index * 2 + 1],
+		);
+	}
+	const data: ChartRenderData = {
+		end,
+		measureBoundaries: measureBoundaries(chart, end),
+		spatialIndex,
+		spatialIndexTree,
+		spatialIndexSize,
+	};
+	chartRenderDataCache.set(chart, data);
+	return data;
+}
+
+function notesOverlapping(
+	data: ChartRenderData,
+	minimum: number,
+	maximum: number,
+): PreparedNote[] {
+	let limit = 0;
+	let high = data.spatialIndex.length;
+	while (limit < high) {
+		const middle = (limit + high) >>> 1;
+		if (data.spatialIndex[middle].position <= maximum) limit = middle + 1;
+		else high = middle;
+	}
+
+	const visible: PreparedNote[] = [];
+	const visit = (node: number, start: number, finish: number) => {
+		if (start >= limit || data.spatialIndexTree[node] < minimum) return;
+		if (finish - start === 1) {
+			const note = data.spatialIndex[start];
+			if (note) visible.push(note);
+			return;
+		}
+		const middle = (start + finish) >>> 1;
+		visit(node * 2, start, middle);
+		visit(node * 2 + 1, middle, finish);
+	};
+	if (data.spatialIndex.length > 0) {
+		visit(1, 0, data.spatialIndexSize);
+	}
+	return visible.sort((left, right) => left.index - right.index);
+}
+
 function paintSheet(
 	canvas: HTMLCanvasElement,
-	chart: ChartData,
+	data: ChartRenderData,
 	displayEnd: number,
 	sheetHeight: number,
 	tileTop: number,
@@ -412,6 +500,10 @@ function paintSheet(
 	const end = displayEnd;
 	const bottom = sheetHeight - 24;
 	const laneWidth = (right - left) / laneCount;
+	const beatPerPixel = end / (bottom - top);
+	const tileTopBeat = ((bottom - tileTop) / (bottom - top)) * end;
+	const tileBottomBeat =
+		((bottom - tileTop - tileHeight) / (bottom - top)) * end;
 
 	for (let lane = 0; lane <= laneCount; lane++) {
 		const x = left + lane * laneWidth;
@@ -422,7 +514,11 @@ function paintSheet(
 		context.lineTo(x, bottom);
 		context.stroke();
 	}
-	for (let beat = 0; beat <= end; beat++) {
+	for (
+		let beat = Math.max(0, Math.ceil(tileBottomBeat - 2 * beatPerPixel));
+		beat <= Math.min(end, tileTopBeat + 2 * beatPerPixel);
+		beat++
+	) {
 		const y = bottom - (beat / end) * (bottom - top);
 		context.strokeStyle = beat % 4 === 0 ? "#475569" : "#1e293b";
 		context.beginPath();
@@ -431,18 +527,23 @@ function paintSheet(
 		context.stroke();
 	}
 
-	const notes = [...chart.notes].sort(
-		(left, right) => Number(isTapHead(left)) - Number(isTapHead(right)),
+	const beatPadding = 12 * beatPerPixel;
+	const minimum = Math.max(0, tileBottomBeat - beatPadding);
+	const maximum = Math.min(displayEnd, tileTopBeat + beatPadding);
+	const notes = notesOverlapping(data, minimum, maximum).sort(
+		(left, right) =>
+			Number(isTapHead(left.note)) - Number(isTapHead(right.note)) ||
+			left.index - right.index,
 	);
-	for (const note of notes) {
-		const [startLane, endLane] = laneRange(note.lane);
+	for (const prepared of notes) {
+		const { note, position, laneStart: startLane, laneEnd: endLane } = prepared;
 		const x = left + startLane * laneWidth + 2;
 		const noteWidth = Math.max(4, (endLane - startLane) * laneWidth - 4);
-		const y = bottom - (positionValue(note.position) / end) * (bottom - top);
+		const y = bottom - (position / end) * (bottom - top);
 		const endPosition =
 			"end" in note.kind ? positionValue(note.kind.end) : undefined;
 		context.fillStyle = noteColor(note);
-		const points = renderedPathPoints(note);
+		const points = prepared.path;
 		if (points.length > 1) {
 			const color = noteColor(note);
 			context.lineCap = "round";
@@ -486,7 +587,7 @@ function paintSheet(
 
 function paintPlayfield(
 	canvas: HTMLCanvasElement,
-	chart: ChartData,
+	data: ChartRenderData,
 	currentBeat: number,
 	noteSpeed: number,
 ) {
@@ -597,12 +698,24 @@ function paintPlayfield(
 	};
 	context.strokeStyle = "#334155";
 	context.lineWidth = 1;
-	for (const beat of measureBoundaries(chart, chartEnd(chart))) {
-		if (
-			beat < currentBeat - playfieldLookBehindBeats ||
-			beat > currentBeat + approachBeats
-		)
-			continue;
+	let measureIndex = 0;
+	let measureHigh = data.measureBoundaries.length;
+	const firstVisibleMeasure = currentBeat - playfieldLookBehindBeats;
+	while (measureIndex < measureHigh) {
+		const middle = (measureIndex + measureHigh) >>> 1;
+		if (data.measureBoundaries[middle] < firstVisibleMeasure) {
+			measureIndex = middle + 1;
+		} else {
+			measureHigh = middle;
+		}
+	}
+	for (
+		let index = measureIndex;
+		index < data.measureBoundaries.length &&
+		data.measureBoundaries[index] <= currentBeat + approachBeats;
+		index++
+	) {
+		const beat = data.measureBoundaries[index];
 		const y = Math.max(horizonY, Math.min(floorY, yAtBeat(beat)));
 		context.beginPath();
 		for (let lane = 0; lane <= 20; lane++) {
@@ -659,14 +772,26 @@ function paintPlayfield(
 			context.stroke();
 		}
 	};
-	for (const note of chart.notes) {
-		drawPath(note, playfieldPathPoints(note, currentBeat, approachBeats));
+	const visibleNotes = notesOverlapping(
+		data,
+		currentBeat - playfieldLookBehindBeats,
+		currentBeat + approachBeats,
+	).map((prepared) => ({
+		prepared,
+		path: playfieldPathPoints(
+			prepared.playfieldPath,
+			currentBeat,
+			approachBeats,
+		),
+	}));
+	for (const { prepared, path } of visibleNotes) {
+		drawPath(prepared.note, path);
 	}
-	for (const note of chart.notes) {
-		const notePosition = positionValue(note.position);
+	for (const { prepared, path } of visibleNotes) {
+		const { note, position: notePosition } = prepared;
 		const distance = notePosition - currentBeat;
-		const sustainEnd = "end" in note.kind ? positionValue(note.kind.end) : null;
-		const visibleEnd = noteEndPosition(note);
+		const sustainEnd = prepared.sustainEnd;
+		const visibleEnd = prepared.endPosition;
 		const sustainStartVisible =
 			sustainEnd === null
 				? null
@@ -679,7 +804,6 @@ function paintPlayfield(
 			sustainStartVisible !== null &&
 			sustainEndVisible !== null &&
 			sustainStartVisible <= sustainEndVisible;
-		const path = playfieldPathPoints(note, currentBeat, approachBeats);
 		const isPathVisible =
 			path.length > 1 &&
 			notePosition <= currentBeat + approachBeats &&
@@ -691,7 +815,7 @@ function paintPlayfield(
 				distance > approachBeats)
 		)
 			continue;
-		const [startLane, endLane] = laneRange(note.lane);
+		const { laneStart: startLane, laneEnd: endLane } = prepared;
 		const headIsVisible = distance >= -1;
 		const headY = Math.max(horizonY, Math.min(floorY, yAtBeat(notePosition)));
 		const headDepth = perspectiveDepth(notePosition);
@@ -811,7 +935,8 @@ export function ChartRenderer({
 	const [sheetViewportHeight, setSheetViewportHeight] = useState(0);
 	const [isCommentListOpen, setIsCommentListOpen] = useState(true);
 	const currentBeat = position ?? localPosition;
-	const end = chartEnd(chart);
+	const renderData = renderDataFor(chart);
+	const end = renderData.end;
 	const sheetPaddingBeats = Math.max(
 		4,
 		Math.ceil(
@@ -844,7 +969,7 @@ export function ChartRenderer({
 				if (!canvas) continue;
 				paintSheet(
 					canvas,
-					chart,
+					renderData,
 					sheetEnd,
 					contentHeight,
 					index * sheetTileHeight,
@@ -853,7 +978,7 @@ export function ChartRenderer({
 			if (playfield.current)
 				paintPlayfield(
 					playfield.current,
-					chart,
+					renderData,
 					currentBeatRef.current,
 					noteSpeed,
 				);
@@ -866,11 +991,11 @@ export function ChartRenderer({
 			cancelAnimationFrame(frame);
 			observer.disconnect();
 		};
-	}, [chart, noteSpeed, sheetEnd, sheetHeight]);
+	}, [renderData, noteSpeed, sheetEnd, sheetHeight]);
 	useEffect(() => {
 		if (playfield.current)
-			paintPlayfield(playfield.current, chart, currentBeat, noteSpeed);
-	}, [chart, currentBeat, noteSpeed]);
+			paintPlayfield(playfield.current, renderData, currentBeat, noteSpeed);
+	}, [renderData, currentBeat, noteSpeed]);
 	useLayoutEffect(() => {
 		if (position === undefined) return;
 		if (preserveScrollAfterClick.current) {
