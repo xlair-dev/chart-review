@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	type ChartComment,
 	type ChartCommentComposer,
 	ChartRenderer,
 } from "@/components/viewer/chart-renderer";
+import { chartSoundPlan, type JudgmentSound } from "@/lib/chart-judgments";
 import type { ChartData } from "@/lib/chart-model";
 import {
 	audioSecondsAtBeat,
@@ -21,6 +22,16 @@ function requestAudioPlay(player: HTMLAudioElement) {
 		console.error("Audio playback failed", error);
 	});
 }
+
+const judgmentSoundSources: Record<JudgmentSound, string> = {
+	tap: "/sounds/judgments/tap.wav",
+	xTap: "/sounds/judgments/x-tap.wav",
+	flick: "/sounds/judgments/flick.wav",
+	sideTap: "/sounds/judgments/side-tap.wav",
+	hold: "/sounds/judgments/hold.wav",
+	sideHold: "/sounds/judgments/side-hold.wav",
+	slideHold: "/sounds/judgments/slide-hold.wav",
+};
 
 export function ChartPlayback({
 	chart,
@@ -53,6 +64,15 @@ export function ChartPlayback({
 }) {
 	const audio = useRef<HTMLAudioElement>(null);
 	const playbackFrame = useRef<number | undefined>(undefined);
+	const soundPlan = useMemo(() => chartSoundPlan(chart), [chart]);
+	const judgmentEvents = soundPlan.judgments;
+	const judgmentCursor = useRef(0);
+	const lastJudgmentPosition = useRef<number | undefined>(undefined);
+	const sustainedSoundCursor = useRef(0);
+	const activeSustainedSounds = useRef({ sideHold: 0, slideHold: 0 });
+	const judgmentPlayers = useRef<
+		Partial<Record<JudgmentSound, HTMLAudioElement>>
+	>({});
 	const chartLeadIn = useRef<
 		{ chartSeconds: number; startedAt: number; wasMuted: boolean } | undefined
 	>(undefined);
@@ -66,6 +86,29 @@ export function ChartPlayback({
 	const position = controlledPosition ?? localPosition;
 	const source = localAudioUrl ?? audioSource;
 	const canPlay = supportsChartTiming(chart);
+
+	useEffect(() => {
+		const players: Partial<Record<JudgmentSound, HTMLAudioElement>> = {};
+		const sounds = new Set(judgmentEvents.map((judgment) => judgment.sound));
+		if (soundPlan.sustainedTransitions.length > 0) {
+			sounds.add("sideHold");
+			sounds.add("slideHold");
+		}
+		for (const sound of sounds) {
+			const source = judgmentSoundSources[sound];
+			const player = new Audio(source);
+			player.preload = "auto";
+			player.volume = 0.35;
+			player.loop = sound === "sideHold" || sound === "slideHold";
+			player.load();
+			players[sound] = player;
+		}
+		judgmentPlayers.current = players;
+		return () => {
+			for (const player of Object.values(players)) player?.pause();
+			judgmentPlayers.current = {};
+		};
+	}, [judgmentEvents, soundPlan]);
 
 	useEffect(() => {
 		if (!localAudioUrl) return;
@@ -121,6 +164,86 @@ export function ChartPlayback({
 		onPositionChange?.(beat);
 	}
 
+	function resetJudgmentPlayback(beat: number, includeCurrent: boolean) {
+		let low = 0;
+		let high = judgmentEvents.length;
+		while (low < high) {
+			const middle = (low + high) >>> 1;
+			if (judgmentEvents[middle].beat < beat) low = middle + 1;
+			else high = middle;
+		}
+		judgmentCursor.current = low;
+		lastJudgmentPosition.current = includeCurrent ? beat - 0.000001 : beat;
+	}
+
+	function playJudgmentsThrough(beat: number) {
+		const previous = lastJudgmentPosition.current;
+		while (
+			judgmentCursor.current < judgmentEvents.length &&
+			judgmentEvents[judgmentCursor.current].beat <= beat
+		) {
+			const judgment = judgmentEvents[judgmentCursor.current];
+			if (previous !== undefined && judgment.beat > previous) {
+				const player = judgmentPlayers.current[judgment.sound];
+				if (player) {
+					player.currentTime = 0;
+					requestAudioPlay(player);
+				}
+			}
+			judgmentCursor.current += 1;
+		}
+		lastJudgmentPosition.current = beat;
+	}
+
+	function syncSustainedSounds() {
+		for (const sound of ["sideHold", "slideHold"] as const) {
+			const player = judgmentPlayers.current[sound];
+			if (!player) continue;
+			const count = activeSustainedSounds.current[sound];
+			const playbackActive = audio.current !== null && !audio.current.paused;
+			if (count > 0 && playbackActive && player.paused) {
+				player.currentTime = 0;
+				requestAudioPlay(player);
+			} else if ((!playbackActive || count === 0) && !player.paused) {
+				player.pause();
+				player.currentTime = 0;
+			}
+		}
+	}
+
+	function resetSustainedSoundPlayback(beat: number) {
+		let low = 0;
+		let high = soundPlan.sustainedTransitions.length;
+		while (low < high) {
+			const middle = (low + high) >>> 1;
+			if (soundPlan.sustainedTransitions[middle].beat <= beat) low = middle + 1;
+			else high = middle;
+		}
+		sustainedSoundCursor.current = low;
+		const current = soundPlan.sustainedTransitions[low - 1];
+		activeSustainedSounds.current = {
+			sideHold: current?.sideHoldCount ?? 0,
+			slideHold: current?.slideHoldCount ?? 0,
+		};
+		syncSustainedSounds();
+	}
+
+	function updateSustainedSoundsThrough(beat: number) {
+		while (
+			sustainedSoundCursor.current < soundPlan.sustainedTransitions.length &&
+			soundPlan.sustainedTransitions[sustainedSoundCursor.current].beat <= beat
+		) {
+			const transition =
+				soundPlan.sustainedTransitions[sustainedSoundCursor.current];
+			activeSustainedSounds.current = {
+				sideHold: transition.sideHoldCount,
+				slideHold: transition.slideHoldCount,
+			};
+			sustainedSoundCursor.current += 1;
+		}
+		syncSustainedSounds();
+	}
+
 	function chooseAudio(file?: File) {
 		setLocalAudioUrl(file ? URL.createObjectURL(file) : undefined);
 		changePosition(0);
@@ -148,7 +271,9 @@ export function ChartPlayback({
 
 	function seek(beat: number) {
 		changePosition(beat);
+		resetJudgmentPlayback(beat, false);
 		const player = audio.current;
+		resetSustainedSoundPlayback(beat);
 		if (player && player.readyState > 0 && canPlay) {
 			const audioSeconds = audioSecondsAtBeat(chart, beat);
 			if (
@@ -192,7 +317,10 @@ export function ChartPlayback({
 				leadIn.chartSeconds + (performance.now() - leadIn.startedAt) / 1000;
 			const audioOffset = chart.audioOffsetSeconds ?? 0;
 			if (chartSeconds < audioOffset) {
-				changePosition(positionAtSeconds(chart, chartSeconds));
+				const beat = positionAtSeconds(chart, chartSeconds);
+				playJudgmentsThrough(beat);
+				updateSustainedSoundsThrough(beat);
+				changePosition(beat);
 			} else {
 				chartLeadIn.current = undefined;
 				player.muted = true;
@@ -217,12 +345,30 @@ export function ChartPlayback({
 			playbackFrame.current = undefined;
 			return;
 		}
-		changePosition(positionAtAudioSeconds(chart, player.currentTime));
+		const beat = positionAtAudioSeconds(chart, player.currentTime);
+		playJudgmentsThrough(beat);
+		updateSustainedSoundsThrough(beat);
+		changePosition(beat);
 		playbackFrame.current = requestAnimationFrame(syncPlaybackPosition);
 	}
 
 	function startPlaybackSync() {
 		const player = audio.current;
+		resetJudgmentPlayback(
+			chartLeadIn.current
+				? positionAtSeconds(chart, chartLeadIn.current.chartSeconds)
+				: player
+					? positionAtAudioSeconds(chart, player.currentTime)
+					: position,
+			true,
+		);
+		resetSustainedSoundPlayback(
+			chartLeadIn.current
+				? positionAtSeconds(chart, chartLeadIn.current.chartSeconds)
+				: player
+					? positionAtAudioSeconds(chart, player.currentTime)
+					: position,
+		);
 		const audioOffset = chart.audioOffsetSeconds ?? 0;
 		if (
 			player &&
@@ -240,6 +386,10 @@ export function ChartPlayback({
 		if (playbackFrame.current !== undefined)
 			cancelAnimationFrame(playbackFrame.current);
 		playbackFrame.current = undefined;
+		for (const sound of ["sideHold", "slideHold"] as const) {
+			const soundPlayer = judgmentPlayers.current[sound];
+			soundPlayer?.pause();
+		}
 		const player = audio.current;
 		if (!player) return;
 		const leadIn = chartLeadIn.current;
@@ -325,6 +475,15 @@ export function ChartPlayback({
 						}}
 						onTimeUpdate={(event) => {
 							syncPositionFromAudio(event.currentTarget.currentTime);
+						}}
+						onSeeking={(event) => {
+							if (chartLeadIn.current) return;
+							const beat = positionAtAudioSeconds(
+								chart,
+								event.currentTarget.currentTime,
+							);
+							resetJudgmentPlayback(beat, false);
+							resetSustainedSoundPlayback(beat);
 						}}
 						ref={audio}
 						src={source}

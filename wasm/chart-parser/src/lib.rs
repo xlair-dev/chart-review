@@ -237,9 +237,11 @@ enum NoteKindData {
     Mine,
     Hold {
         end: PositionData,
+        checkpoints: Vec<PositionData>,
     },
     ExHold {
         end: PositionData,
+        checkpoints: Vec<PositionData>,
         direction: String,
     },
     Slide {
@@ -255,6 +257,7 @@ enum NoteKindData {
     },
     AirHold {
         end: PositionData,
+        checkpoints: Vec<PositionData>,
         properties: AirPropertiesData,
         parent: u32,
     },
@@ -279,9 +282,13 @@ impl From<&NoteKind> for NoteKindData {
                 direction: ex_direction_name(*direction).to_owned(),
             },
             NoteKind::Mine => Self::Mine,
-            NoteKind::Hold { end } => Self::Hold { end: (*end).into() },
-            NoteKind::ExHold { end, direction } => Self::ExHold {
+            NoteKind::Hold { end, checkpoints } => Self::Hold {
                 end: (*end).into(),
+                checkpoints: checkpoints.iter().copied().map(Into::into).collect(),
+            },
+            NoteKind::ExHold { end, checkpoints, direction } => Self::ExHold {
+                end: (*end).into(),
+                checkpoints: checkpoints.iter().copied().map(Into::into).collect(),
                 direction: ex_direction_name(*direction).to_owned(),
             },
             NoteKind::Slide { points } => Self::Slide {
@@ -297,10 +304,12 @@ impl From<&NoteKind> for NoteKindData {
             },
             NoteKind::AirHold {
                 end,
+                checkpoints,
                 properties,
                 parent,
             } => Self::AirHold {
                 end: (*end).into(),
+                checkpoints: checkpoints.iter().copied().map(Into::into).collect(),
                 properties: (*properties).into(),
                 parent: parent.value(),
             },
