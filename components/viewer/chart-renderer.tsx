@@ -189,36 +189,90 @@ function samplePathSegment(
 	controls: RawPathPoint[],
 	finish: RawPathPoint,
 ): RawPathPoint[] {
-	const controlPoints = [start, ...controls, finish];
-	const sampleCount = Math.max(8, controls.length * 16);
-	const samples: RawPathPoint[] = [];
-	for (let sample = 0; sample <= sampleCount; sample += 1) {
-		const progress = sample / sampleCount;
-		const points = controlPoints.map((point) => {
-			const [laneStart, laneEnd] = laneRange(point.lane);
-			return [laneStart, laneEnd] as const;
-		});
-		for (let depth = points.length - 1; depth > 0; depth -= 1) {
-			for (let index = 0; index < depth; index += 1) {
-				points[index] = [
-					points[index][0] +
-						(points[index + 1][0] - points[index][0]) * progress,
-					points[index][1] +
-						(points[index + 1][1] - points[index][1]) * progress,
-				];
-			}
+	type Coordinate = [position: number, laneStart: number, laneEnd: number];
+	const coordinates = [start, ...controls, finish].map((point): Coordinate => {
+		const [laneStart, laneEnd] = laneRange(point.lane);
+		return [point.position, laneStart, laneEnd];
+	});
+	const midpoint = (left: Coordinate, right: Coordinate): Coordinate => [
+		(left[0] + right[0]) / 2,
+		(left[1] + right[1]) / 2,
+		(left[2] + right[2]) / 2,
+	];
+	const split = (points: Coordinate[]) => {
+		const levels = [points];
+		while (levels.at(-1)?.length !== 1) {
+			const previous = levels.at(-1) ?? [];
+			levels.push(
+				previous
+					.slice(1)
+					.map((point, index) => midpoint(previous[index], point)),
+			);
 		}
-		samples.push({
-			position: start.position + (finish.position - start.position) * progress,
-			lane: {
-				type: "slider",
-				start: points[0][0] - 2,
-				width: points[0][1] - points[0][0],
-			},
-			kind: "visible",
+		const right = levels.flatMap((level) => {
+			const endpoint = level.at(-1);
+			return endpoint ? [endpoint] : [];
 		});
-	}
-	return samples;
+		return {
+			left: levels.map((level) => level[0]),
+			right: right.reverse(),
+		};
+	};
+	const distanceFromChord = (
+		point: Coordinate,
+		from: Coordinate,
+		to: Coordinate,
+	) => {
+		const x = point[1] - from[1];
+		const y = (point[0] - from[0]) * 2.5;
+		const chordX = to[1] - from[1];
+		const chordY = (to[0] - from[0]) * 2.5;
+		const chordLength = Math.hypot(chordX, chordY);
+		return chordLength === 0
+			? Math.hypot(x, y)
+			: Math.abs(x * chordY - y * chordX) / chordLength;
+	};
+	const flatEnough = (points: Coordinate[]) => {
+		const toPoint = points.at(-1);
+		if (!toPoint) return true;
+		return [1, 2].every((laneIndex) =>
+			points.slice(1, -1).every((point) => {
+				const coordinate: Coordinate = [
+					point[0],
+					point[laneIndex],
+					point[laneIndex],
+				];
+				const from: Coordinate = [
+					points[0][0],
+					points[0][laneIndex],
+					points[0][laneIndex],
+				];
+				const to: Coordinate = [
+					toPoint[0],
+					toPoint[laneIndex],
+					toPoint[laneIndex],
+				];
+				return distanceFromChord(coordinate, from, to) <= 0.05;
+			}),
+		);
+	};
+	const samples: Coordinate[] = [coordinates[0]];
+	const append = (points: Coordinate[], depth: number) => {
+		if (depth >= 9 || flatEnough(points)) {
+			const endpoint = points.at(-1);
+			if (endpoint) samples.push(endpoint);
+			return;
+		}
+		const halves = split(points);
+		append(halves.left, depth + 1);
+		append(halves.right, depth + 1);
+	};
+	append(coordinates, 0);
+	return samples.map(([position, laneStart, laneEnd]) => ({
+		position,
+		lane: { type: "slider", start: laneStart - 2, width: laneEnd - laneStart },
+		kind: "visible",
+	}));
 }
 
 function renderedPathPoints(
@@ -368,6 +422,7 @@ interface PreparedNote {
 	laneEnd: number;
 	path: RawPathPoint[];
 	playfieldPath: RawPathPoint[];
+	checkpoints: RawPathPoint[];
 }
 
 interface ChartRenderData {
@@ -397,6 +452,16 @@ function renderDataFor(chart: ChartData): ChartRenderData {
 			endPosition = Math.max(endPosition, positionValue(note.kind.end));
 		}
 		const sustainEnd = "end" in note.kind ? positionValue(note.kind.end) : null;
+		const holdCheckpoints =
+			note.kind.type === "hold" ||
+			note.kind.type === "exHold" ||
+			note.kind.type === "airHold"
+				? note.kind.checkpoints.map((checkpoint) => ({
+						position: positionValue(checkpoint),
+						lane: note.lane,
+						kind: "visible" as const,
+					}))
+				: [];
 		end = Math.max(end, endPosition);
 		const path = renderedPathPoints(note, rawPath);
 		const [laneStart, laneEnd] = laneRange(note.lane);
@@ -409,6 +474,12 @@ function renderDataFor(chart: ChartData): ChartRenderData {
 			laneStart,
 			laneEnd,
 			path,
+			checkpoints: [
+				...rawPath.filter(
+					(point) => point.kind === "visible" && point.position > position,
+				),
+				...holdCheckpoints,
+			],
 			playfieldPath: path.filter(
 				(point, pointIndex, points) =>
 					pointIndex === 0 || point.position >= points[pointIndex - 1].position,
@@ -537,6 +608,7 @@ function paintSheet(
 	);
 	for (const prepared of notes) {
 		const { note, position, laneStart: startLane, laneEnd: endLane } = prepared;
+		const color = noteColor(note);
 		const x = left + startLane * laneWidth + 2;
 		const noteWidth = Math.max(4, (endLane - startLane) * laneWidth - 4);
 		const y = bottom - (position / end) * (bottom - top);
@@ -545,7 +617,6 @@ function paintSheet(
 		context.fillStyle = noteColor(note);
 		const points = prepared.path;
 		if (points.length > 1) {
-			const color = noteColor(note);
 			context.lineCap = "round";
 			context.lineJoin = "round";
 			for (let index = 1; index < points.length; index += 1) {
@@ -574,6 +645,25 @@ function paintSheet(
 				context.lineTo((pointLeft + pointRight) / 2, pointY);
 				context.stroke();
 			}
+		}
+		for (const checkpoint of prepared.checkpoints) {
+			if (checkpoint.position < minimum || checkpoint.position > maximum)
+				continue;
+			const [checkpointStart, checkpointEnd] = laneRange(checkpoint.lane);
+			const checkpointX =
+				left + ((checkpointStart + checkpointEnd) / 2) * laneWidth;
+			const checkpointY = bottom - (checkpoint.position / end) * (bottom - top);
+			context.save();
+			context.translate(checkpointX, checkpointY);
+			context.rotate(Math.PI / 4);
+			context.fillStyle = color;
+			context.strokeStyle = "#e0f2fe";
+			context.lineWidth = 1.5;
+			context.beginPath();
+			context.roundRect(-5, -5, 10, 10, 1.5);
+			context.fill();
+			context.stroke();
+			context.restore();
 		}
 		if (endPosition !== undefined) {
 			const endY = bottom - (endPosition / end) * (bottom - top);
@@ -786,6 +876,35 @@ function paintPlayfield(
 	}));
 	for (const { prepared, path } of visibleNotes) {
 		drawPath(prepared.note, path);
+	}
+	for (const { prepared } of visibleNotes) {
+		const color = noteColor(prepared.note);
+		for (const checkpoint of prepared.checkpoints) {
+			if (
+				checkpoint.position < currentBeat ||
+				checkpoint.position > currentBeat + approachBeats
+			) {
+				continue;
+			}
+			const [laneStart, laneEnd] = laneRange(checkpoint.lane);
+			const depth = perspectiveDepth(checkpoint.position);
+			const [left, leftY] = renderedLanePointAtDepth(laneStart, depth);
+			const [right, rightY] = renderedLanePointAtDepth(laneEnd, depth);
+			const x = (left + right) / 2;
+			const y = (leftY + rightY) / 2;
+			const radius = 3 + depth * 3;
+			context.save();
+			context.translate(x, y);
+			context.rotate(Math.PI / 4);
+			context.fillStyle = color;
+			context.strokeStyle = "#e0f2fe";
+			context.lineWidth = 1.5;
+			context.beginPath();
+			context.roundRect(-radius, -radius, radius * 2, radius * 2, radius * 0.3);
+			context.fill();
+			context.stroke();
+			context.restore();
+		}
 	}
 	for (const { prepared, path } of visibleNotes) {
 		const { note, position: notePosition } = prepared;
