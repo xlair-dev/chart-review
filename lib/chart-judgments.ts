@@ -3,7 +3,6 @@ import { positionValue } from "@/lib/chart-position";
 
 export type JudgmentSound =
 	| "tap"
-	| "xTap"
 	| "flick"
 	| "sideTap"
 	| "hold"
@@ -29,7 +28,7 @@ export interface ChartSoundPlan {
 function soundForTap(tap: TapKind): JudgmentSound {
 	switch (tap.type) {
 		case "xTap":
-			return "xTap";
+			return "flick";
 		case "flick":
 			return "flick";
 		default:
@@ -37,13 +36,38 @@ function soundForTap(tap: TapKind): JudgmentSound {
 	}
 }
 
-function visiblePointJudgments(points: SlidePoint[]): number[] {
-	return points
-		.filter((point) => point.kind === "visible")
-		.map((point) => positionValue(point.position));
+function slidePointJudgments(
+	points: SlidePoint[],
+	startBeat: number,
+	isSideLane: boolean,
+): ChartJudgment[] {
+	let startPointConsumed = false;
+	return [
+		{
+			beat: startBeat,
+			sound: isSideLane ? ("sideTap" as const) : ("tap" as const),
+		},
+		...points.flatMap((point) => {
+			if (point.kind !== "visible") return [];
+			const beat = positionValue(point.position);
+			if (!startPointConsumed && beat === startBeat) {
+				startPointConsumed = true;
+				return [];
+			}
+			return [
+				{
+					beat,
+					sound: isSideLane ? ("sideTap" as const) : ("hold" as const),
+				},
+			];
+		}),
+	];
 }
 
-function noteJudgments(note: Note): ChartJudgment[] {
+function noteJudgments(
+	note: Note,
+	sideXTapParents: ReadonlySet<number>,
+): ChartJudgment[] {
 	const beat = positionValue(note.position);
 	const isSideLane = note.lane.type === "side";
 	switch (note.kind.type) {
@@ -51,10 +75,17 @@ function noteJudgments(note: Note): ChartJudgment[] {
 			return [];
 		case "tap":
 			return [
-				{ beat, sound: isSideLane ? "sideTap" : soundForTap(note.kind.tap) },
+				{
+					beat,
+					sound: isSideLane
+						? note.kind.tap.type === "xTap"
+							? "flick"
+							: "sideTap"
+						: soundForTap(note.kind.tap),
+				},
 			];
 		case "exTap":
-			return [{ beat, sound: isSideLane ? "sideTap" : "xTap" }];
+			return [{ beat, sound: "flick" }];
 		case "hold":
 		case "exHold":
 		case "airHold":
@@ -77,20 +108,21 @@ function noteJudgments(note: Note): ChartJudgment[] {
 		case "exSlide":
 		case "airSlide":
 		case "airCrush":
-			return visiblePointJudgments(note.kind.points).map((pointBeat) => ({
-				beat: pointBeat,
-				sound: isSideLane ? "sideTap" : "hold",
-			}));
+			return slidePointJudgments(note.kind.points, beat, isSideLane);
 		case "air":
 			return [
 				{
 					beat,
-					sound:
-						isSideLane ||
-						(note.kind.properties.direction !== null &&
-							["upperLeft", "upperRight", "lowerLeft", "lowerRight"].includes(
-								note.kind.properties.direction,
-							))
+					sound: sideXTapParents.has(note.kind.parent)
+						? "flick"
+						: isSideLane ||
+								(note.kind.properties.direction !== null &&
+									[
+										"upperLeft",
+										"upperRight",
+										"lowerLeft",
+										"lowerRight",
+									].includes(note.kind.properties.direction))
 							? "sideTap"
 							: "tap",
 				},
@@ -127,11 +159,19 @@ function sustainedSoundInterval(note: Note) {
 
 /** Visible points judge; control and invisible points only shape the slide. */
 export function chartSoundPlan(chart: ChartData): ChartSoundPlan {
-	const sideExTapParents = new Set(
+	const xTapIds = new Set(
+		chart.notes
+			.filter(
+				(note) => note.kind.type === "tap" && note.kind.tap.type === "xTap",
+			)
+			.map((note) => note.id),
+	);
+	const sideXTapParents = new Set(
 		chart.notes
 			.filter(
 				(note) =>
 					note.kind.type === "air" &&
+					xTapIds.has(note.kind.parent) &&
 					note.kind.properties.direction !== null &&
 					["upperLeft", "upperRight", "lowerLeft", "lowerRight"].includes(
 						note.kind.properties.direction,
@@ -143,12 +183,12 @@ export function chartSoundPlan(chart: ChartData): ChartSoundPlan {
 		.filter(
 			(note) =>
 				!(
-					sideExTapParents.has(note.id) &&
+					sideXTapParents.has(note.id) &&
 					note.kind.type === "tap" &&
 					note.kind.tap.type === "xTap"
 				),
 		)
-		.flatMap(noteJudgments);
+		.flatMap((note) => noteJudgments(note, sideXTapParents));
 	const changes = new Map<number, { sideHold: number; slideHold: number }>();
 	for (const note of chart.notes) {
 		const interval = sustainedSoundInterval(note);
