@@ -2,7 +2,7 @@
 	"name": "chart-review",
 	"version": "0.1.0",
 	"private": true,
-	"packageManager": "pnpm@12.8.1",
+	"packageManager": "pnpm@12.9.1",
 	"scripts": {
 		"build:chart-parser": "sh scripts/build-chart-parser.sh",
 		"dev": "pnpm build:chart-parser && next dev",
