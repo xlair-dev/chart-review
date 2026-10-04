@@ -24,14 +24,23 @@ function requestAudioPlay(player: HTMLAudioElement) {
 }
 
 const judgmentSoundSources: Record<JudgmentSound, string> = {
-	tap: "/sounds/judgments/tap.wav",
-	xTap: "/sounds/judgments/x-tap.wav",
-	flick: "/sounds/judgments/flick.wav",
-	sideTap: "/sounds/judgments/side-tap.wav",
-	hold: "/sounds/judgments/hold.wav",
-	sideHold: "/sounds/judgments/side-hold.wav",
-	slideHold: "/sounds/judgments/slide-hold.wav",
+	tap: "/sounds/judgments/tap.mp3",
+	flick: "/sounds/judgments/flick.mp3",
+	sideTap: "/sounds/judgments/side-tap.mp3",
+	hold: "/sounds/judgments/hold.mp3",
+	sideHold: "/sounds/judgments/side-hold.mp3",
+	slideHold: "/sounds/judgments/slide-hold.mp3",
 };
+
+function judgmentVolume(sound: JudgmentSound): number {
+	if (sound === "slideHold") return 0.18;
+	if (sound === "sideHold") return 0.22;
+	if (sound === "tap") return 1.7;
+	if (sound === "flick" || sound === "sideTap") {
+		return 1.6;
+	}
+	return 0.65;
+}
 
 export function ChartPlayback({
 	chart,
@@ -71,8 +80,13 @@ export function ChartPlayback({
 	const sustainedSoundCursor = useRef(0);
 	const activeSustainedSounds = useRef({ sideHold: 0, slideHold: 0 });
 	const judgmentPlayers = useRef<
-		Partial<Record<JudgmentSound, HTMLAudioElement>>
+		Partial<Record<JudgmentSound, HTMLAudioElement[]>>
 	>({});
+	const judgmentAudioContext = useRef<AudioContext | null>(null);
+	const judgmentCompressor = useRef<DynamicsCompressorNode | null>(null);
+	const judgmentBuffers = useRef<Partial<Record<JudgmentSound, AudioBuffer>>>(
+		{},
+	);
 	const chartLeadIn = useRef<
 		{ chartSeconds: number; startedAt: number; wasMuted: boolean } | undefined
 	>(undefined);
@@ -88,25 +102,62 @@ export function ChartPlayback({
 	const canPlay = supportsChartTiming(chart);
 
 	useEffect(() => {
-		const players: Partial<Record<JudgmentSound, HTMLAudioElement>> = {};
-		const sounds = new Set(judgmentEvents.map((judgment) => judgment.sound));
+		const players: Partial<Record<JudgmentSound, HTMLAudioElement[]>> = {};
+		const oneShotSounds = new Set(
+			judgmentEvents.map((judgment) => judgment.sound),
+		);
+		const sounds = new Set(oneShotSounds);
 		if (soundPlan.sustainedTransitions.length > 0) {
 			sounds.add("sideHold");
 			sounds.add("slideHold");
 		}
 		for (const sound of sounds) {
-			const source = judgmentSoundSources[sound];
-			const player = new Audio(source);
+			const player = new Audio(judgmentSoundSources[sound]);
 			player.preload = "auto";
-			player.volume = 0.35;
+			player.volume = Math.min(1, judgmentVolume(sound));
 			player.loop = sound === "sideHold" || sound === "slideHold";
 			player.load();
-			players[sound] = player;
+			players[sound] = [player];
 		}
 		judgmentPlayers.current = players;
+		const audioContext = new AudioContext();
+		judgmentAudioContext.current = audioContext;
+		const compressor = audioContext.createDynamicsCompressor();
+		compressor.threshold.value = -3;
+		compressor.knee.value = 6;
+		compressor.ratio.value = 6;
+		compressor.attack.value = 0.003;
+		compressor.release.value = 0.1;
+		compressor.connect(audioContext.destination);
+		judgmentCompressor.current = compressor;
+		for (const sound of oneShotSounds) {
+			void fetch(judgmentSoundSources[sound])
+				.then((response) => {
+					if (!response.ok) throw new Error(`Failed to load ${sound} sound`);
+					return response.arrayBuffer();
+				})
+				.then((data) => audioContext.decodeAudioData(data))
+				.then((buffer) => {
+					if (judgmentAudioContext.current === audioContext) {
+						judgmentBuffers.current = {
+							...judgmentBuffers.current,
+							[sound]: buffer,
+						};
+					}
+				})
+				.catch((error: unknown) => {
+					console.error(`Judgment sound loading failed: ${sound}`, error);
+				});
+		}
 		return () => {
-			for (const player of Object.values(players)) player?.pause();
+			for (const voices of Object.values(players)) {
+				for (const player of voices ?? []) player.pause();
+			}
 			judgmentPlayers.current = {};
+			judgmentBuffers.current = {};
+			judgmentAudioContext.current = null;
+			judgmentCompressor.current = null;
+			void audioContext.close();
 		};
 	}, [judgmentEvents, soundPlan]);
 
@@ -176,7 +227,7 @@ export function ChartPlayback({
 		lastJudgmentPosition.current = includeCurrent ? beat - 0.000001 : beat;
 	}
 
-	function playJudgmentsThrough(beat: number) {
+	function playJudgmentsThrough(beat: number, audioSeconds?: number) {
 		const previous = lastJudgmentPosition.current;
 		while (
 			judgmentCursor.current < judgmentEvents.length &&
@@ -184,8 +235,46 @@ export function ChartPlayback({
 		) {
 			const judgment = judgmentEvents[judgmentCursor.current];
 			if (previous !== undefined && judgment.beat > previous) {
-				const player = judgmentPlayers.current[judgment.sound];
-				if (player) {
+				const context = judgmentAudioContext.current;
+				const buffer = judgmentBuffers.current[judgment.sound];
+				if (
+					context?.state === "running" &&
+					buffer &&
+					audioSeconds !== undefined
+				) {
+					const source = context.createBufferSource();
+					const gain = context.createGain();
+					source.buffer = buffer;
+					gain.gain.value = judgmentVolume(judgment.sound);
+					source.connect(gain);
+					gain.connect(judgmentCompressor.current ?? context.destination);
+					const secondsUntilJudgment = Math.max(
+						0,
+						audioSecondsAtBeat(chart, judgment.beat) - audioSeconds,
+					);
+					const outputTimestamp = context.getOutputTimestamp();
+					const outputOffset =
+						outputTimestamp.contextTime !== undefined &&
+						outputTimestamp.contextTime > 0
+							? outputTimestamp.contextTime - context.currentTime
+							: 0;
+					source.start(
+						Math.max(
+							context.currentTime,
+							context.currentTime + secondsUntilJudgment + outputOffset,
+						),
+					);
+				} else {
+					const voices = judgmentPlayers.current[judgment.sound];
+					if (!voices) continue;
+					let player = voices.find((voice) => voice.paused || voice.ended);
+					if (!player) {
+						player = new Audio(judgmentSoundSources[judgment.sound]);
+						player.preload = "auto";
+						player.volume = Math.min(1, judgmentVolume(judgment.sound));
+						player.load();
+						voices.push(player);
+					}
 					player.currentTime = 0;
 					requestAudioPlay(player);
 				}
@@ -197,7 +286,7 @@ export function ChartPlayback({
 
 	function syncSustainedSounds() {
 		for (const sound of ["sideHold", "slideHold"] as const) {
-			const player = judgmentPlayers.current[sound];
+			const player = judgmentPlayers.current[sound]?.[0];
 			if (!player) continue;
 			const count = activeSustainedSounds.current[sound];
 			const playbackActive = audio.current !== null && !audio.current.paused;
@@ -346,7 +435,11 @@ export function ChartPlayback({
 			return;
 		}
 		const beat = positionAtAudioSeconds(chart, player.currentTime);
-		playJudgmentsThrough(beat);
+		const lookAheadSeconds = 0.12;
+		playJudgmentsThrough(
+			positionAtAudioSeconds(chart, player.currentTime + lookAheadSeconds),
+			player.currentTime,
+		);
 		updateSustainedSoundsThrough(beat);
 		changePosition(beat);
 		playbackFrame.current = requestAnimationFrame(syncPlaybackPosition);
@@ -354,6 +447,9 @@ export function ChartPlayback({
 
 	function startPlaybackSync() {
 		const player = audio.current;
+		if (judgmentAudioContext.current?.state === "suspended") {
+			void judgmentAudioContext.current.resume();
+		}
 		resetJudgmentPlayback(
 			chartLeadIn.current
 				? positionAtSeconds(chart, chartLeadIn.current.chartSeconds)
@@ -387,7 +483,7 @@ export function ChartPlayback({
 			cancelAnimationFrame(playbackFrame.current);
 		playbackFrame.current = undefined;
 		for (const sound of ["sideHold", "slideHold"] as const) {
-			const soundPlayer = judgmentPlayers.current[sound];
+			const soundPlayer = judgmentPlayers.current[sound]?.[0];
 			soundPlayer?.pause();
 		}
 		const player = audio.current;
