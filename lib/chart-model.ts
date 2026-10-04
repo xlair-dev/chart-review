@@ -56,14 +56,20 @@ export type NoteKind =
 	| { type: "tap"; tap: TapKind }
 	| { type: "exTap"; direction: ExDirection }
 	| { type: "mine" }
-	| { type: "hold"; end: Position }
-	| { type: "exHold"; end: Position; direction: ExDirection }
+	| { type: "hold"; end: Position; checkpoints: Position[] }
+	| {
+			type: "exHold";
+			end: Position;
+			checkpoints: Position[];
+			direction: ExDirection;
+	  }
 	| { type: "slide"; points: SlidePoint[] }
 	| { type: "exSlide"; points: SlidePoint[]; direction: ExDirection }
 	| { type: "air"; properties: AirProperties; parent: number }
 	| {
 			type: "airHold";
 			end: Position;
+			checkpoints: Position[];
 			properties: AirProperties;
 			parent: number;
 	  }
