@@ -126,9 +126,6 @@ export function ProgressOverview() {
 							const item = catalog.find(
 								(entry) => entry.music.id === passed.musicId,
 							);
-							const sheet = item?.sheets.find(
-								(entry) => entry.difficulty === passed.difficulty,
-							);
 							return (
 								<li
 									className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
@@ -140,12 +137,12 @@ export function ProgressOverview() {
 											href={`/feedback/${passed.meetingId}/charts/${passed.chartId}`}
 										>
 											{item?.music.title ?? passed.musicId} ・{" "}
-											{passed.difficulty} {sheet?.level ?? ""}
+											{passed.difficulty}
 										</Link>
 									) : (
 										<span>
 											{item?.music.title ?? passed.musicId} ・{" "}
-											{passed.difficulty} {sheet?.level ?? ""}
+											{passed.difficulty}
 										</span>
 									)}
 									<button

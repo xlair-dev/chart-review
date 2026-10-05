@@ -200,7 +200,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 									key={`${item.music.id}-${sheet.difficulty}`}
 									value={`${item.music.id}|${sheet.difficulty}`}
 								>
-									{item.music.title} — {sheet.difficulty} {sheet.level}
+									{item.music.title} — {sheet.difficulty}
 								</option>
 							))}
 						</select>
@@ -262,9 +262,6 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 							const item = catalog.find(
 								(entry) => entry.music.id === chart.musicId,
 							);
-							const sheet = item?.sheets.find(
-								(entry) => entry.difficulty === chart.difficulty,
-							);
 							return (
 								<li key={chart.id}>
 									<Link
@@ -275,7 +272,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 											<div>
 												<p className="font-semibold">
 													{item?.music.title ?? chart.musicId} —{" "}
-													{chart.difficulty} {sheet?.level ?? ""}
+													{chart.difficulty}
 												</p>
 												{chart.description && (
 													<p className="mt-1 text-sm leading-6 text-slate-600">

@@ -4,7 +4,6 @@ export interface CatalogSheet {
 	id: string;
 	musicId: string;
 	difficulty: "basic" | "advanced" | "master";
-	level: number;
 	notesDesigner: string;
 	chart: SyncAsset;
 }

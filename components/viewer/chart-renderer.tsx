@@ -26,7 +26,24 @@ const playfieldLookBehindBeats = 1;
 const sheetTileHeight = 16_000;
 const sideLaneWidthRatios = {
 	inner: 3,
-	outer: 4,
+	outer: 4.5,
+} as const;
+const sideLaneAngles = {
+	inner: 45,
+	outer: 80,
+} as const;
+const playfieldColors = {
+	background: "#ffffff",
+	centerLane: "#242424",
+	innerLane: "#ffffff",
+	outerLane: "#a3d9f4",
+	innerNote: "#22b8cf",
+	innerSlideNote: "#67e8f9",
+	innerHoldNote: "#06b6d4",
+	outerNote: "#e879a9",
+	centerLine: "#52525b",
+	sideMeasureLine: "#a1a1aa",
+	judgmentLine: "#7dd3fc",
 } as const;
 const holdColor = "#34d399";
 /** The approach window represents a finite depth range in the perspective projection. */
@@ -83,12 +100,27 @@ function logicalSheetLanePosition(position: number): number {
 }
 
 function noteColor(note: Note): string {
-	if (note.kind.type === "tap") {
-		if (note.kind.tap.type === "xTap") return "#fbbf24";
-		if (note.kind.tap.type === "flick") return "#c084fc";
-		if (note.lane.type === "side" && note.kind.tap.type === "tap") {
-			return holdColor;
+	if (note.kind.type === "tap" && note.kind.tap.type === "xTap") {
+		return "#fbbf24";
+	}
+	if (note.kind.type === "exTap") return "#fbbf24";
+	if (note.lane.type === "side") {
+		if (isInnerSideHold(note)) return playfieldColors.innerHoldNote;
+		if (note.kind.type === "slide" || note.kind.type === "exSlide") {
+			if (
+				note.lane.button === "leftLower" ||
+				note.lane.button === "rightLower"
+			) {
+				return playfieldColors.innerSlideNote;
+			}
 		}
+		return note.lane.button === "leftLower" || note.lane.button === "rightLower"
+			? playfieldColors.innerNote
+			: playfieldColors.outerNote;
+	}
+	if (note.kind.type === "tap") {
+		if (note.kind.tap.type === "flick") return "#c084fc";
+		if (note.kind.tap.type === "tap") return "#e2e8f0";
 	}
 	switch (note.kind.type) {
 		case "mine":
@@ -103,8 +135,6 @@ function noteColor(note: Note): string {
 		case "airSlide":
 		case "airCrush":
 			return "#c084fc";
-		case "exTap":
-			return "#fbbf24";
 		default:
 			return "#38bdf8";
 	}
@@ -144,6 +174,17 @@ function sheetLaneStyle(lane: number): string {
 	return `calc(${ratio * 100}% + ${34 - ratio * 52}px)`;
 }
 
+function sheetCommentTransform(lane: number): string {
+	const ratio = sheetLanePosition(lane) / sheetLaneVisualCount;
+	const horizontal =
+		ratio <= 0.4
+			? "translateX(0)"
+			: ratio >= 0.6
+				? "translateX(-100%)"
+				: "translateX(-50%)";
+	return `${horizontal} translateY(-50%)`;
+}
+
 function paintNoteHead(
 	context: CanvasRenderingContext2D,
 	note: Note,
@@ -152,8 +193,8 @@ function paintNoteHead(
 	width: number,
 	height: number,
 	angle?: number,
+	color = noteColor(note),
 ) {
-	const color = noteColor(note);
 	if (angle !== undefined) {
 		context.save();
 		context.translate(x + width / 2, y);
@@ -162,11 +203,14 @@ function paintNoteHead(
 		y = 0;
 	}
 	const isHoldHead =
-		note.kind.type === "hold" ||
-		note.kind.type === "exHold" ||
-		note.kind.type === "airHold";
+		!isSideHold(note) &&
+		(note.kind.type === "hold" ||
+			note.kind.type === "exHold" ||
+			note.kind.type === "airHold");
 	if (!isHoldHead) {
-		context.fillStyle = color;
+		context.fillStyle = isInnerSideHold(note)
+			? colorWithAlpha(color, 0.5)
+			: color;
 		context.beginPath();
 		context.roundRect(x, y - height / 2, width, height, height * 0.4);
 		context.fill();
@@ -299,6 +343,14 @@ function isSideHold(note: Note): boolean {
 		(note.kind.type === "hold" ||
 			note.kind.type === "exHold" ||
 			note.kind.type === "airHold")
+	);
+}
+
+function isInnerSideHold(note: Note): boolean {
+	return (
+		isSideHold(note) &&
+		note.lane.type === "side" &&
+		(note.lane.button === "leftLower" || note.lane.button === "rightLower")
 	);
 }
 
@@ -612,11 +664,18 @@ function paintSheet(
 		}
 		if (endPosition !== undefined) {
 			const endY = bottom - (endPosition / end) * (bottom - top);
-			context.globalAlpha = 0.45;
+			context.globalAlpha = isInnerSideHold(note)
+				? 0.3
+				: isSideHold(note)
+					? 0.22
+					: 0.45;
 			context.fillRect(x, Math.min(y, endY), noteWidth, Math.abs(endY - y));
 			context.globalAlpha = 1;
 			if (isSideHold(note)) {
-				context.strokeStyle = colorWithAlpha(color, 0.7);
+				context.strokeStyle = colorWithAlpha(
+					color,
+					isInnerSideHold(note) ? 0.4 : 0.7,
+				);
 				context.lineWidth = 2.5;
 				context.beginPath();
 				context.moveTo(x + noteWidth / 2, y);
@@ -643,7 +702,7 @@ function paintPlayfield(
 	canvas.width = width * ratio;
 	canvas.height = height * ratio;
 	context.setTransform(ratio, 0, 0, ratio, 0, 0);
-	context.fillStyle = "#020617";
+	context.fillStyle = playfieldColors.background;
 	context.fillRect(0, 0, width, height);
 	const horizonY = height * 0.24;
 	const floorY = height * 0.86;
@@ -657,26 +716,30 @@ function paintPlayfield(
 	};
 	const lanePoint = (lane: number, y: number): [number, number] => {
 		const centerLaneWidth = baseLaneX(2, y) - baseLaneX(1, y);
-		const diagonalOffset = (ratio: number) =>
-			(centerLaneWidth * ratio) / Math.SQRT2;
-		const innerOffset = diagonalOffset(sideLaneWidthRatios.inner);
-		const leftInnerX = baseLaneX(2, y) - innerOffset;
-		const leftInnerY = y - innerOffset;
-		const rightInnerX = baseLaneX(18, y) + innerOffset;
-		const rightInnerY = y - innerOffset;
+		const laneOffset = (ratio: number, angle: number) => {
+			const distance = centerLaneWidth * ratio;
+			const radians = (angle * Math.PI) / 180;
+			return [distance * Math.cos(radians), distance * Math.sin(radians)];
+		};
+		const [innerXOffset, innerYOffset] = laneOffset(
+			sideLaneWidthRatios.inner,
+			sideLaneAngles.inner,
+		);
+		const [outerXOffset, outerYOffset] = laneOffset(
+			sideLaneWidthRatios.outer,
+			sideLaneAngles.outer,
+		);
+		const leftInnerX = baseLaneX(2, y) - innerXOffset;
+		const leftInnerY = y - innerYOffset;
+		const rightInnerX = baseLaneX(18, y) + innerXOffset;
+		const rightInnerY = y - innerYOffset;
 		if (lane === 1) return [leftInnerX, leftInnerY];
 		if (lane === 0) {
-			return [
-				leftInnerX,
-				leftInnerY - centerLaneWidth * sideLaneWidthRatios.outer,
-			];
+			return [leftInnerX - outerXOffset, leftInnerY - outerYOffset];
 		}
 		if (lane === 19) return [rightInnerX, rightInnerY];
 		if (lane === 20) {
-			return [
-				rightInnerX,
-				rightInnerY - centerLaneWidth * sideLaneWidthRatios.outer,
-			];
+			return [rightInnerX + outerXOffset, rightInnerY - outerYOffset];
 		}
 		return [baseLaneX(lane, y), y];
 	};
@@ -710,14 +773,14 @@ function paintPlayfield(
 		context.closePath();
 		context.fill();
 	};
-	drawLaneSurface(2, 18, "#172554");
-	drawLaneSurface(1, 2, "#1e3a8a");
-	drawLaneSurface(0, 1, "#312e81");
-	drawLaneSurface(18, 19, "#1e3a8a");
-	drawLaneSurface(19, 20, "#312e81");
-	context.strokeStyle = "#475569";
+	drawLaneSurface(2, 18, playfieldColors.centerLane);
+	drawLaneSurface(1, 2, playfieldColors.innerLane);
+	drawLaneSurface(0, 1, playfieldColors.outerLane);
+	drawLaneSurface(18, 19, playfieldColors.innerLane);
+	drawLaneSurface(19, 20, playfieldColors.outerLane);
+	context.strokeStyle = playfieldColors.centerLine;
 	context.lineWidth = 1;
-	for (let lane = 0; lane <= 20; lane++) {
+	for (let lane = 3; lane <= 17; lane++) {
 		const [topX, topY] = lanePoint(lane, horizonY);
 		const [bottomX, bottomY] = lanePoint(lane, floorY);
 		context.beginPath();
@@ -725,8 +788,8 @@ function paintPlayfield(
 		context.lineTo(bottomX, bottomY);
 		context.stroke();
 	}
-	context.strokeStyle = "#e2e8f0";
-	context.lineWidth = 3;
+	context.strokeStyle = playfieldColors.judgmentLine;
+	context.lineWidth = 2;
 	context.beginPath();
 	for (let lane = 0; lane <= 20; lane++) {
 		const [x, y] = lanePoint(lane, floorY);
@@ -751,8 +814,19 @@ function paintPlayfield(
 		const depth = perspectiveDepth(beat);
 		return horizonY + depth * (floorY - horizonY);
 	};
-	context.strokeStyle = "#334155";
-	context.lineWidth = 1;
+	const drawMeasureSegment = (
+		startLane: number,
+		endLane: number,
+		y: number,
+	) => {
+		context.beginPath();
+		for (let lane = startLane; lane <= endLane; lane++) {
+			const [x, laneY] = lanePoint(lane, y);
+			if (lane === startLane) context.moveTo(x, laneY);
+			else context.lineTo(x, laneY);
+		}
+		context.stroke();
+	};
 	let measureIndex = 0;
 	let measureHigh = data.measureBoundaries.length;
 	const firstVisibleMeasure = currentBeat - playfieldLookBehindBeats;
@@ -772,13 +846,13 @@ function paintPlayfield(
 	) {
 		const beat = data.measureBoundaries[index];
 		const y = Math.max(horizonY, Math.min(floorY, yAtBeat(beat)));
-		context.beginPath();
-		for (let lane = 0; lane <= 20; lane++) {
-			const [x, laneY] = lanePoint(lane, y);
-			if (lane === 0) context.moveTo(x, laneY);
-			else context.lineTo(x, laneY);
-		}
-		context.stroke();
+		context.strokeStyle = playfieldColors.sideMeasureLine;
+		context.lineWidth = 1;
+		drawMeasureSegment(0, 2, y);
+		context.strokeStyle = playfieldColors.centerLine;
+		drawMeasureSegment(2, 18, y);
+		context.strokeStyle = playfieldColors.sideMeasureLine;
+		drawMeasureSegment(18, 20, y);
 	}
 	const drawPath = (note: Note, path: PlayfieldPathPoint[]) => {
 		if (path.length < 2) return;
@@ -913,7 +987,11 @@ function paintPlayfield(
 			sustainEndVisible !== null
 		) {
 			context.fillStyle = noteColor(note);
-			context.globalAlpha = 0.58;
+			context.globalAlpha = isInnerSideHold(note)
+				? 0.3
+				: hasSideHoldCenterline
+					? 0.22
+					: 0.58;
 			context.beginPath();
 			const sustainSegments = Math.max(
 				8,
@@ -966,7 +1044,10 @@ function paintPlayfield(
 			context.fill();
 			context.globalAlpha = 1;
 			if (sustainCenterline.length > 1) {
-				context.strokeStyle = colorWithAlpha(noteColor(note), 0.7);
+				context.strokeStyle = colorWithAlpha(
+					noteColor(note),
+					isInnerSideHold(note) ? 0.4 : 0.7,
+				);
 				context.lineWidth = 2.5;
 				context.beginPath();
 				context.moveTo(...sustainCenterline[0]);
@@ -989,6 +1070,7 @@ function paintPlayfield(
 			headWidth,
 			headHeight,
 			headAngle,
+			noteColor(note),
 		);
 	}
 }
@@ -1198,7 +1280,7 @@ export function ChartRenderer({
 			<section className="relative overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 p-4">
 				<h2 className="mb-3 text-sm font-semibold text-white">譜面シート</h2>
 				<div
-					className="relative max-h-[70vh] overflow-y-auto rounded-lg"
+					className="relative max-h-[70vh] overflow-x-hidden overflow-y-auto rounded-lg"
 					ref={sheetViewport}
 					onScroll={(event) => {
 						const viewport = event.currentTarget;
@@ -1262,7 +1344,7 @@ export function ChartRenderer({
 						{!isPlaying &&
 							comments.map((comment) => (
 								<button
-									className="absolute z-10 max-w-[min(18rem,70%)] -translate-y-1/2 rounded-xl border border-sky-200/80 bg-sky-50/60 px-3 py-2 text-left text-xs text-slate-800 shadow-lg backdrop-blur-sm transition hover:border-rose-300 hover:bg-rose-50/80"
+									className="absolute z-10 w-max max-w-[min(28rem,80%)] break-words rounded-xl border border-sky-200/80 bg-sky-50/60 px-3 py-2 text-left text-xs text-slate-800 shadow-lg backdrop-blur-sm transition hover:border-rose-300 hover:bg-rose-50/80 [overflow-wrap:anywhere]"
 									key={comment.id}
 									type="button"
 									onClick={(event) => {
@@ -1272,7 +1354,7 @@ export function ChartRenderer({
 									style={{
 										top: sheetPositionStyle(comment.position, sheetEnd),
 										left: sheetLaneStyle(comment.lanePosition),
-										transform: "translate(-50%, -50%)",
+										transform: sheetCommentTransform(comment.lanePosition),
 									}}
 								>
 									<strong className="block text-sky-900">
@@ -1371,8 +1453,8 @@ export function ChartRenderer({
 					)}
 				</div>
 			</section>
-			<section className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 p-4">
-				<h2 className="mb-3 text-sm font-semibold text-white">
+			<section className="overflow-hidden rounded-2xl border border-slate-300 bg-white p-4">
+				<h2 className="mb-3 text-sm font-semibold text-slate-900">
 					ゲーム画面（簡易表示）
 				</h2>
 				<canvas
