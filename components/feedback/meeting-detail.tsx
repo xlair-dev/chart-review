@@ -268,14 +268,14 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 										className="block w-full rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-sky-300 hover:bg-sky-50/30 hover:shadow-sm"
 										href={`/feedback/${meetingId}/charts/${chart.id}`}
 									>
-										<div className="flex flex-wrap items-center justify-between gap-4">
-											<div>
+										<div className="flex items-start gap-4">
+											<div className="min-w-0 flex-1">
 												<p className="font-semibold">
 													{item?.music.title ?? chart.musicId} —{" "}
 													{chart.difficulty}
 												</p>
 												{chart.description && (
-													<p className="mt-1 text-sm leading-6 text-slate-600">
+													<p className="mt-1 text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">
 														{chart.description}
 													</p>
 												)}
@@ -283,7 +283,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 													更新 {new Date(chart.uploadedAt).toLocaleString()}
 												</p>
 											</div>
-											<span className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white">
+											<span className="shrink-0 rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white">
 												開く
 											</span>
 										</div>
