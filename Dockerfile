@@ -11,7 +11,9 @@ RUN mkdir src && touch src/lib.rs
 # Keep Cargo dependencies in an exported image layer; GitHub Actions does not persist BuildKit cache mounts by default.
 RUN cargo build --locked --target wasm32-unknown-unknown --release --lib
 COPY wasm/chart-parser/src ./src
-RUN wasm-pack build --target web --release --out-dir /out
+# Remove placeholder-crate artifacts so Cargo must compile the copied parser source.
+RUN cargo clean --package chart-review-parser --target wasm32-unknown-unknown --release \
+	&& wasm-pack build --target web --release --out-dir /out
 
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS dependencies
 
@@ -33,6 +35,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY . .
 # The Wasm parser is built in the separate Rust stage before the Next.js build.
 COPY --from=wasm-builder /out ./public/wasm/chart-parser
+# Verify generated glue and Wasm exports stay compatible before publishing the image.
+RUN node --input-type=module -e 'import fs from "node:fs"; import init, { parse_chart_json } from "./public/wasm/chart-parser/chart_review_parser.js"; const wasm = await init(fs.readFileSync("./public/wasm/chart-parser/chart_review_parser_bg.wasm")); if (typeof parse_chart_json !== "function" || typeof wasm.__wbindgen_free !== "function") throw new Error("Chart parser Wasm exports are incomplete");'
 RUN pnpm exec next build
 
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS runner
