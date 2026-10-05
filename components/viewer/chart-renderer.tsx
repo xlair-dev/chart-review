@@ -677,6 +677,8 @@ function paintSheet(
 					isInnerSideHold(note) ? 0.4 : 0.7,
 				);
 				context.lineWidth = 2.5;
+				context.lineCap = "round";
+				context.lineJoin = "round";
 				context.beginPath();
 				context.moveTo(x + noteWidth / 2, y);
 				context.lineTo(x + noteWidth / 2, endY);
@@ -1049,6 +1051,8 @@ function paintPlayfield(
 					isInnerSideHold(note) ? 0.4 : 0.7,
 				);
 				context.lineWidth = 2.5;
+				context.lineCap = "round";
+				context.lineJoin = "round";
 				context.beginPath();
 				context.moveTo(...sustainCenterline[0]);
 				for (const [x, y] of sustainCenterline.slice(1)) {
