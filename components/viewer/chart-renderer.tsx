@@ -7,7 +7,8 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { ChartData, Lane, Note } from "@/lib/chart-model";
+import type { ChartData, Lane, Note, SideButton } from "@/lib/chart-model";
+import { sideXTapPairs } from "@/lib/chart-note-relations";
 import { positionValue } from "@/lib/chart-position";
 
 const sideOrder = [
@@ -334,12 +335,34 @@ interface ChartRenderData {
 /** Parsed chart data is immutable while rendered, so derived geometry stays valid for this cache entry. */
 const chartRenderDataCache = new WeakMap<ChartData, ChartRenderData>();
 
+function notesForRendering(chart: ChartData): Note[] {
+	const sideButtonsByParent = new Map<number, Set<SideButton>>();
+	const sideXTapAirNoteIds = new Set<number>();
+	for (const relation of sideXTapPairs(chart)) {
+		const buttons = sideButtonsByParent.get(relation.parentId) ?? new Set();
+		buttons.add(relation.button);
+		sideButtonsByParent.set(relation.parentId, buttons);
+		sideXTapAirNoteIds.add(relation.airNoteId);
+	}
+
+	return chart.notes.flatMap((note) => {
+		const sideButtons = sideButtonsByParent.get(note.id);
+		if (sideButtons) {
+			return [...sideButtons].map((button) => ({
+				...note,
+				lane: { type: "side" as const, button },
+			}));
+		}
+		return sideXTapAirNoteIds.has(note.id) ? [] : [note];
+	});
+}
+
 function renderDataFor(chart: ChartData): ChartRenderData {
 	const cached = chartRenderDataCache.get(chart);
 	if (cached) return cached;
 
 	let end = 4;
-	const notes = chart.notes.map((note, index): PreparedNote => {
+	const notes = notesForRendering(chart).map((note, index): PreparedNote => {
 		const position = positionValue(note.position);
 		const rawPath = pathPoints(note);
 		let endPosition = position;
