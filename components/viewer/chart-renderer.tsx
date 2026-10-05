@@ -39,7 +39,6 @@ const playfieldColors = {
 	outerLane: "#a3d9f4",
 	innerNote: "#22b8cf",
 	innerSlideNote: "#67e8f9",
-	innerHoldNote: "#9bd9e4",
 	outerHoldNote: "#ffb8ca",
 	outerHoldCenterline: "#ffabc0",
 	outerHoldFill: "#ffcfdb",
@@ -110,7 +109,7 @@ function noteColor(note: Note): string {
 	if (note.lane.type === "side") {
 		if (isSideHold(note)) {
 			return isInnerSideHold(note)
-				? playfieldColors.innerHoldNote
+				? playfieldColors.innerNote
 				: playfieldColors.outerHoldNote;
 		}
 		if (
@@ -631,7 +630,7 @@ function paintSheet(
 		const endY = bottom - (positionValue(note.kind.end) / end) * (bottom - top);
 		context.globalAlpha = isSideHold(note)
 			? isInnerSideHold(note)
-				? 0.5
+				? 0.65
 				: 0.5
 			: 0.45;
 		context.fillStyle =
@@ -1028,7 +1027,7 @@ function paintPlayfield(
 					: noteColor(note);
 			context.globalAlpha = hasSideHoldCenterline
 				? isInnerSideHold(note)
-					? 0.5
+					? 0.65
 					: 1
 				: 0.58;
 			context.beginPath();
