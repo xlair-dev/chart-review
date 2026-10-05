@@ -23,6 +23,7 @@ const playfieldLookBehindBeats = 1;
 const sheetTileHeight = 16_000;
 const playfieldSideWidthScale = 1.2;
 const playfieldUpperRiseScale = 2.2;
+const holdColor = "#34d399";
 /** The approach window represents a finite depth range in the perspective projection. */
 const playfieldFarDistance = 4;
 
@@ -62,6 +63,9 @@ function noteColor(note: Note): string {
 	if (note.kind.type === "tap") {
 		if (note.kind.tap.type === "xTap") return "#fbbf24";
 		if (note.kind.tap.type === "flick") return "#c084fc";
+		if (note.lane.type === "side" && note.kind.tap.type === "tap") {
+			return holdColor;
+		}
 	}
 	switch (note.kind.type) {
 		case "mine":
@@ -69,7 +73,7 @@ function noteColor(note: Note): string {
 		case "hold":
 		case "exHold":
 		case "airHold":
-			return "#34d399";
+			return holdColor;
 		case "slide":
 		case "exSlide":
 			return "#38bdf8";
@@ -264,6 +268,15 @@ function playfieldPathPoints(
 
 function isTapHead(note: Note): boolean {
 	return note.kind.type === "tap" || note.kind.type === "exTap";
+}
+
+function isSideHold(note: Note): boolean {
+	return (
+		note.lane.type === "side" &&
+		(note.kind.type === "hold" ||
+			note.kind.type === "exHold" ||
+			note.kind.type === "airHold")
+	);
 }
 
 function measureBoundaries(chart: ChartData, end: number): number[] {
@@ -548,6 +561,14 @@ function paintSheet(
 			context.globalAlpha = 0.45;
 			context.fillRect(x, Math.min(y, endY), noteWidth, Math.abs(endY - y));
 			context.globalAlpha = 1;
+			if (isSideHold(note)) {
+				context.strokeStyle = colorWithAlpha(color, 0.7);
+				context.lineWidth = 2.5;
+				context.beginPath();
+				context.moveTo(x + noteWidth / 2, y);
+				context.lineTo(x + noteWidth / 2, endY);
+				context.stroke();
+			}
 		}
 		paintNoteHead(context, note, x, y, noteWidth, 10);
 	}
@@ -808,6 +829,7 @@ function paintPlayfield(
 		const headIsVisible = distance >= -1;
 		const headY = Math.max(horizonY, Math.min(floorY, yAtBeat(notePosition)));
 		const headDepth = perspectiveDepth(notePosition);
+		const hasSideHoldCenterline = isSideHold(note);
 		const [headLeft, headLeftY] = renderedLanePointAtDepth(
 			startLane,
 			headDepth,
@@ -831,6 +853,7 @@ function paintPlayfield(
 				8,
 				Math.ceil(Math.abs(sustainEndVisible - sustainStartVisible) / 2),
 			);
+			const sustainCenterline: [number, number][] = [];
 			for (let segment = 0; segment < sustainSegments; segment += 1) {
 				const startRatio = segment / sustainSegments;
 				const endRatio = (segment + 1) / sustainSegments;
@@ -856,6 +879,18 @@ function paintPlayfield(
 					endLane,
 					segmentEndDepth,
 				);
+				if (hasSideHoldCenterline) {
+					if (segment === 0) {
+						sustainCenterline.push([
+							(segmentStartLeft + segmentStartRight) / 2,
+							(segmentStartLeftY + segmentStartRightY) / 2,
+						]);
+					}
+					sustainCenterline.push([
+						(segmentEndLeft + segmentEndRight) / 2,
+						(segmentEndLeftY + segmentEndRightY) / 2,
+					]);
+				}
 				context.moveTo(segmentStartLeft, segmentStartLeftY);
 				context.lineTo(segmentStartRight, segmentStartRightY);
 				context.lineTo(segmentEndRight, segmentEndRightY);
@@ -864,6 +899,16 @@ function paintPlayfield(
 			}
 			context.fill();
 			context.globalAlpha = 1;
+			if (sustainCenterline.length > 1) {
+				context.strokeStyle = colorWithAlpha(noteColor(note), 0.7);
+				context.lineWidth = 2.5;
+				context.beginPath();
+				context.moveTo(...sustainCenterline[0]);
+				for (const [x, y] of sustainCenterline.slice(1)) {
+					context.lineTo(x, y);
+				}
+				context.stroke();
+			}
 		}
 		if (!headIsVisible || headY >= floorY || headY < horizonY) continue;
 		const gameX = (headLeft + headRight) / 2 - headWidth / 2;
