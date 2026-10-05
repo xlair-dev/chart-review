@@ -1,19 +1,17 @@
 # syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
-FROM rust:1-bookworm@sha256:59037199c44290f2befcdd58dcc540164763fc296950255aaefeef096a1866b0 AS wasm-builder
+FROM --platform=$BUILDPLATFORM rust:1-bookworm@sha256:59037199c44290f2befcdd58dcc540164763fc296950255aaefeef096a1866b0 AS wasm-builder
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-	--mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-	rustup target add wasm32-unknown-unknown \
-	&& cargo install wasm-pack --locked
+RUN rustup target add wasm32-unknown-unknown \
+	&& cargo install wasm-pack --locked --version 0.15.0
 
 WORKDIR /src/wasm/chart-parser
 COPY wasm/chart-parser/Cargo.toml wasm/chart-parser/Cargo.lock ./
+RUN mkdir src && touch src/lib.rs
+# Keep Cargo dependencies in an exported image layer; GitHub Actions does not persist BuildKit cache mounts by default.
+RUN cargo build --locked --target wasm32-unknown-unknown --release --lib
 COPY wasm/chart-parser/src ./src
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
-	--mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
-	--mount=type=cache,target=/src/wasm/chart-parser/target,sharing=locked \
-	wasm-pack build --target web --release --out-dir /out
+RUN wasm-pack build --target web --release --out-dir /out
 
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS dependencies
 
@@ -21,7 +19,7 @@ RUN apt-get update \
 	&& apt-get install --no-install-recommends -y python3 make g++ \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& corepack enable \
-	&& corepack prepare pnpm@12.5.1 --activate
+	&& corepack prepare pnpm@12.9.1 --activate
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./

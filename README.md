@@ -5,7 +5,7 @@
 ## 開発環境
 
 - Node.js 24
-- pnpm 12.5.1
+- pnpm 12.9.1
 - Rust stable
 - wasm32-unknown-unknown ターゲット
 - wasm-pack
