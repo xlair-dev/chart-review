@@ -39,7 +39,10 @@ const playfieldColors = {
 	outerLane: "#a3d9f4",
 	innerNote: "#22b8cf",
 	innerSlideNote: "#67e8f9",
-	innerHoldNote: "#67cfe0",
+	innerHoldNote: "#9bd9e4",
+	outerHoldNote: "#ffb8ca",
+	outerHoldCenterline: "#ffabc0",
+	outerHoldFill: "#ffcfdb",
 	outerNote: "#e879a9",
 	centerLine: "#52525b",
 	sideMeasureLine: "#a1a1aa",
@@ -105,7 +108,18 @@ function noteColor(note: Note): string {
 	}
 	if (note.kind.type === "exTap") return "#fbbf24";
 	if (note.lane.type === "side") {
-		if (isInnerSideHold(note)) return playfieldColors.innerHoldNote;
+		if (isSideHold(note)) {
+			return isInnerSideHold(note)
+				? playfieldColors.innerHoldNote
+				: playfieldColors.outerHoldNote;
+		}
+		if (
+			note.kind.type === "tap" &&
+			note.kind.tap.type === "tap" &&
+			(note.lane.button === "leftUpper" || note.lane.button === "rightUpper")
+		) {
+			return playfieldColors.outerHoldNote;
+		}
 		if (note.kind.type === "slide" || note.kind.type === "exSlide") {
 			if (
 				note.lane.button === "leftLower" ||
@@ -138,6 +152,12 @@ function noteColor(note: Note): string {
 		default:
 			return "#38bdf8";
 	}
+}
+
+function holdCenterlineColor(note: Note): string {
+	return isSideHold(note) && !isInnerSideHold(note)
+		? playfieldColors.outerHoldCenterline
+		: noteColor(note);
 }
 
 function colorWithAlpha(color: string, alpha: number): string {
@@ -600,6 +620,28 @@ function paintSheet(
 			left.index - right.index,
 	);
 	for (const prepared of notes) {
+		const { note, position, laneStart, laneEnd } = prepared;
+		if (!("end" in note.kind)) continue;
+		const color = noteColor(note);
+		const visualStart = sheetLanePosition(laneStart);
+		const visualEnd = sheetLanePosition(laneEnd);
+		const x = left + visualStart * laneWidth + 2;
+		const noteWidth = Math.max(4, (visualEnd - visualStart) * laneWidth - 4);
+		const y = bottom - (position / end) * (bottom - top);
+		const endY = bottom - (positionValue(note.kind.end) / end) * (bottom - top);
+		context.globalAlpha = isSideHold(note)
+			? isInnerSideHold(note)
+				? 0.5
+				: 0.5
+			: 0.45;
+		context.fillStyle =
+			isSideHold(note) && !isInnerSideHold(note)
+				? playfieldColors.outerHoldFill
+				: color;
+		context.fillRect(x, Math.min(y, endY), noteWidth, Math.abs(endY - y));
+		context.globalAlpha = 1;
+	}
+	for (const prepared of notes) {
 		const { note, position, laneStart: startLane, laneEnd: endLane } = prepared;
 		const color = noteColor(note);
 		const visualStart = sheetLanePosition(startLane);
@@ -660,31 +702,22 @@ function paintSheet(
 			);
 			context.stroke();
 		}
-		if (endPosition !== undefined) {
+		if (endPosition !== undefined && isSideHold(note)) {
 			const endY = bottom - (endPosition / end) * (bottom - top);
-			context.globalAlpha = isInnerSideHold(note)
-				? 0.5
-				: isSideHold(note)
-					? 0.22
-					: 0.45;
-			context.fillRect(x, Math.min(y, endY), noteWidth, Math.abs(endY - y));
-			context.globalAlpha = 1;
-			if (isSideHold(note)) {
-				context.strokeStyle = color;
-				context.lineWidth = 2.5;
-				context.lineCap = "round";
-				context.lineJoin = "round";
-				context.beginPath();
-				context.moveTo(x + noteWidth / 2, y);
-				context.lineTo(x + noteWidth / 2, endY);
-				context.stroke();
-				context.strokeStyle = color;
-				context.lineWidth = 3;
-				context.beginPath();
-				context.moveTo(left + sheetLanePosition(startLane) * laneWidth, endY);
-				context.lineTo(left + sheetLanePosition(endLane) * laneWidth, endY);
-				context.stroke();
-			}
+			context.strokeStyle = holdCenterlineColor(note);
+			context.lineWidth = 2.5;
+			context.lineCap = "round";
+			context.lineJoin = "round";
+			context.beginPath();
+			context.moveTo(x + noteWidth / 2, y);
+			context.lineTo(x + noteWidth / 2, endY);
+			context.stroke();
+			context.strokeStyle = color;
+			context.lineWidth = 3;
+			context.beginPath();
+			context.moveTo(left + sheetLanePosition(startLane) * laneWidth, endY);
+			context.lineTo(left + sheetLanePosition(endLane) * laneWidth, endY);
+			context.stroke();
 		}
 		paintNoteHead(context, note, x, y, noteWidth, 10);
 	}
@@ -989,12 +1022,15 @@ function paintPlayfield(
 			sustainStartVisible !== null &&
 			sustainEndVisible !== null
 		) {
-			context.fillStyle = noteColor(note);
-			context.globalAlpha = isInnerSideHold(note)
-				? 0.5
-				: hasSideHoldCenterline
-					? 0.22
-					: 0.58;
+			context.fillStyle =
+				hasSideHoldCenterline && !isInnerSideHold(note)
+					? playfieldColors.outerHoldFill
+					: noteColor(note);
+			context.globalAlpha = hasSideHoldCenterline
+				? isInnerSideHold(note)
+					? 0.5
+					: 1
+				: 0.58;
 			context.beginPath();
 			const sustainSegments = Math.max(
 				8,
@@ -1047,7 +1083,7 @@ function paintPlayfield(
 			context.fill();
 			context.globalAlpha = 1;
 			if (sustainCenterline.length > 1) {
-				context.strokeStyle = noteColor(note);
+				context.strokeStyle = holdCenterlineColor(note);
 				context.lineWidth = 2.5;
 				context.lineCap = "round";
 				context.lineJoin = "round";
