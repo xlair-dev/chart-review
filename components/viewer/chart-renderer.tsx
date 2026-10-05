@@ -18,15 +18,15 @@ const sideOrder = [
 	"rightUpper",
 ] as const;
 const laneCount = 20;
+const sheetSideLaneWidthRatio = 2;
+const sheetLaneVisualCount = laneCount + (sheetSideLaneWidthRatio - 1) * 4;
 const sheetPixelsPerBeat = 100;
 const sheetCursorRatio = 0.82;
 const playfieldLookBehindBeats = 1;
 const sheetTileHeight = 16_000;
 const sideLaneWidthRatios = {
-	leftInner: 2,
-	leftOuter: 2,
-	rightInner: 3,
-	rightOuter: 4,
+	inner: 3,
+	outer: 4,
 } as const;
 const holdColor = "#34d399";
 /** The approach window represents a finite depth range in the perspective projection. */
@@ -62,6 +62,24 @@ function laneRange(lane: Lane): [number, number] {
 		[19, 20],
 	];
 	return sideLanes[sideOrder.indexOf(lane.button)];
+}
+
+function sheetLanePosition(lane: number): number {
+	if (lane <= 2) return lane * sheetSideLaneWidthRatio;
+	if (lane <= 18) return lane + 2 * (sheetSideLaneWidthRatio - 1);
+	return 20 + (lane - 18) * sheetSideLaneWidthRatio;
+}
+
+function logicalSheetLanePosition(position: number): number {
+	const leftSideWidth = 2 * sheetSideLaneWidthRatio;
+	const centerWidth = laneCount - 4;
+	if (position <= leftSideWidth) return position / sheetSideLaneWidthRatio;
+	if (position <= leftSideWidth + centerWidth) {
+		return position - 2 * (sheetSideLaneWidthRatio - 1);
+	}
+	return (
+		18 + (position - leftSideWidth - centerWidth) / sheetSideLaneWidthRatio
+	);
 }
 
 function noteColor(note: Note): string {
@@ -122,7 +140,7 @@ function sheetPositionStyle(position: number, end: number): string {
 }
 
 function sheetLaneStyle(lane: number): string {
-	const ratio = lane / 20;
+	const ratio = sheetLanePosition(lane) / sheetLaneVisualCount;
 	return `calc(${ratio * 100}% + ${34 - ratio * 52}px)`;
 }
 
@@ -495,14 +513,14 @@ function paintSheet(
 	const top = 36;
 	const end = displayEnd;
 	const bottom = sheetHeight - 24;
-	const laneWidth = (right - left) / laneCount;
+	const laneWidth = (right - left) / sheetLaneVisualCount;
 	const beatPerPixel = end / (bottom - top);
 	const tileTopBeat = ((bottom - tileTop) / (bottom - top)) * end;
 	const tileBottomBeat =
 		((bottom - tileTop - tileHeight) / (bottom - top)) * end;
 
 	for (let lane = 0; lane <= laneCount; lane++) {
-		const x = left + lane * laneWidth;
+		const x = left + sheetLanePosition(lane) * laneWidth;
 		context.strokeStyle = lane === 2 || lane === 18 ? "#64748b" : "#334155";
 		context.lineWidth = lane === 2 || lane === 18 ? 1.5 : 1;
 		context.beginPath();
@@ -534,8 +552,10 @@ function paintSheet(
 	for (const prepared of notes) {
 		const { note, position, laneStart: startLane, laneEnd: endLane } = prepared;
 		const color = noteColor(note);
-		const x = left + startLane * laneWidth + 2;
-		const noteWidth = Math.max(4, (endLane - startLane) * laneWidth - 4);
+		const visualStart = sheetLanePosition(startLane);
+		const visualEnd = sheetLanePosition(endLane);
+		const x = left + visualStart * laneWidth + 2;
+		const noteWidth = Math.max(4, (visualEnd - visualStart) * laneWidth - 4);
 		const y = bottom - (position / end) * (bottom - top);
 		const endPosition =
 			"end" in note.kind ? positionValue(note.kind.end) : undefined;
@@ -551,10 +571,11 @@ function paintSheet(
 				const [pointStart, pointEnd] = laneRange(point.lane);
 				const previousY = bottom - (previous.position / end) * (bottom - top);
 				const pointY = bottom - (point.position / end) * (bottom - top);
-				const previousLeft = left + previousStart * laneWidth;
-				const previousRight = left + previousEnd * laneWidth;
-				const pointLeft = left + pointStart * laneWidth;
-				const pointRight = left + pointEnd * laneWidth;
+				const previousLeft =
+					left + sheetLanePosition(previousStart) * laneWidth;
+				const previousRight = left + sheetLanePosition(previousEnd) * laneWidth;
+				const pointLeft = left + sheetLanePosition(pointStart) * laneWidth;
+				const pointRight = left + sheetLanePosition(pointEnd) * laneWidth;
 				context.fillStyle = colorWithAlpha(color, 0.22);
 				context.beginPath();
 				context.moveTo(previousLeft, previousY);
@@ -579,8 +600,14 @@ function paintSheet(
 			context.strokeStyle = color;
 			context.lineWidth = 3;
 			context.beginPath();
-			context.moveTo(left + checkpointStart * laneWidth, checkpointY);
-			context.lineTo(left + checkpointEnd * laneWidth, checkpointY);
+			context.moveTo(
+				left + sheetLanePosition(checkpointStart) * laneWidth,
+				checkpointY,
+			);
+			context.lineTo(
+				left + sheetLanePosition(checkpointEnd) * laneWidth,
+				checkpointY,
+			);
 			context.stroke();
 		}
 		if (endPosition !== undefined) {
@@ -632,24 +659,23 @@ function paintPlayfield(
 		const centerLaneWidth = baseLaneX(2, y) - baseLaneX(1, y);
 		const diagonalOffset = (ratio: number) =>
 			(centerLaneWidth * ratio) / Math.SQRT2;
-		const leftInnerOffset = diagonalOffset(sideLaneWidthRatios.leftInner);
-		const rightInnerOffset = diagonalOffset(sideLaneWidthRatios.rightInner);
-		const leftInnerX = baseLaneX(2, y) - leftInnerOffset;
-		const leftInnerY = y - leftInnerOffset;
-		const rightInnerX = baseLaneX(18, y) + rightInnerOffset;
-		const rightInnerY = y - rightInnerOffset;
+		const innerOffset = diagonalOffset(sideLaneWidthRatios.inner);
+		const leftInnerX = baseLaneX(2, y) - innerOffset;
+		const leftInnerY = y - innerOffset;
+		const rightInnerX = baseLaneX(18, y) + innerOffset;
+		const rightInnerY = y - innerOffset;
 		if (lane === 1) return [leftInnerX, leftInnerY];
 		if (lane === 0) {
 			return [
 				leftInnerX,
-				leftInnerY - centerLaneWidth * sideLaneWidthRatios.leftOuter,
+				leftInnerY - centerLaneWidth * sideLaneWidthRatios.outer,
 			];
 		}
 		if (lane === 19) return [rightInnerX, rightInnerY];
 		if (lane === 20) {
 			return [
 				rightInnerX,
-				rightInnerY - centerLaneWidth * sideLaneWidthRatios.rightOuter,
+				rightInnerY - centerLaneWidth * sideLaneWidthRatios.outer,
 			];
 		}
 		return [baseLaneX(lane, y), y];
@@ -1121,7 +1147,10 @@ export function ChartRenderer({
 			0,
 			Math.min(
 				20,
-				((event.clientX - contentRect.left - left) / (right - left)) * 20,
+				logicalSheetLanePosition(
+					((event.clientX - contentRect.left - left) / (right - left)) *
+						sheetLaneVisualCount,
+				),
 			),
 		);
 		if (onCommentPositionChange) {
