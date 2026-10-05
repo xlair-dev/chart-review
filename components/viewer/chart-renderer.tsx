@@ -39,7 +39,7 @@ const playfieldColors = {
 	outerLane: "#a3d9f4",
 	innerNote: "#22b8cf",
 	innerSlideNote: "#67e8f9",
-	innerHoldNote: "#06b6d4",
+	innerHoldNote: "#67cfe0",
 	outerNote: "#e879a9",
 	centerLine: "#52525b",
 	sideMeasureLine: "#a1a1aa",
@@ -208,9 +208,7 @@ function paintNoteHead(
 			note.kind.type === "exHold" ||
 			note.kind.type === "airHold");
 	if (!isHoldHead) {
-		context.fillStyle = isInnerSideHold(note)
-			? colorWithAlpha(color, 0.5)
-			: color;
+		context.fillStyle = color;
 		context.beginPath();
 		context.roundRect(x, y - height / 2, width, height, height * 0.4);
 		context.fill();
@@ -665,23 +663,26 @@ function paintSheet(
 		if (endPosition !== undefined) {
 			const endY = bottom - (endPosition / end) * (bottom - top);
 			context.globalAlpha = isInnerSideHold(note)
-				? 0.3
+				? 0.5
 				: isSideHold(note)
 					? 0.22
 					: 0.45;
 			context.fillRect(x, Math.min(y, endY), noteWidth, Math.abs(endY - y));
 			context.globalAlpha = 1;
 			if (isSideHold(note)) {
-				context.strokeStyle = colorWithAlpha(
-					color,
-					isInnerSideHold(note) ? 0.4 : 0.7,
-				);
+				context.strokeStyle = color;
 				context.lineWidth = 2.5;
 				context.lineCap = "round";
 				context.lineJoin = "round";
 				context.beginPath();
 				context.moveTo(x + noteWidth / 2, y);
 				context.lineTo(x + noteWidth / 2, endY);
+				context.stroke();
+				context.strokeStyle = color;
+				context.lineWidth = 3;
+				context.beginPath();
+				context.moveTo(left + sheetLanePosition(startLane) * laneWidth, endY);
+				context.lineTo(left + sheetLanePosition(endLane) * laneWidth, endY);
 				context.stroke();
 			}
 		}
@@ -990,7 +991,7 @@ function paintPlayfield(
 		) {
 			context.fillStyle = noteColor(note);
 			context.globalAlpha = isInnerSideHold(note)
-				? 0.3
+				? 0.5
 				: hasSideHoldCenterline
 					? 0.22
 					: 0.58;
@@ -1046,10 +1047,7 @@ function paintPlayfield(
 			context.fill();
 			context.globalAlpha = 1;
 			if (sustainCenterline.length > 1) {
-				context.strokeStyle = colorWithAlpha(
-					noteColor(note),
-					isInnerSideHold(note) ? 0.4 : 0.7,
-				);
+				context.strokeStyle = noteColor(note);
 				context.lineWidth = 2.5;
 				context.lineCap = "round";
 				context.lineJoin = "round";
@@ -1058,6 +1056,28 @@ function paintPlayfield(
 				for (const [x, y] of sustainCenterline.slice(1)) {
 					context.lineTo(x, y);
 				}
+				context.stroke();
+			}
+			if (
+				hasSideHoldCenterline &&
+				sustainEnd !== null &&
+				sustainEnd >= currentBeat - playfieldLookBehindBeats &&
+				sustainEnd <= currentBeat + approachBeats
+			) {
+				const endDepth = perspectiveDepth(sustainEnd);
+				const [endLeft, endLeftY] = renderedLanePointAtDepth(
+					startLane,
+					endDepth,
+				);
+				const [endRight, endRightY] = renderedLanePointAtDepth(
+					endLane,
+					endDepth,
+				);
+				context.strokeStyle = noteColor(note);
+				context.lineWidth = 2 + endDepth * 1.5;
+				context.beginPath();
+				context.moveTo(endLeft, endLeftY);
+				context.lineTo(endRight, endRightY);
 				context.stroke();
 			}
 		}
