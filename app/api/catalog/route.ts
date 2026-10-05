@@ -9,6 +9,15 @@ export async function GET() {
 		return Response.json(
 			catalog.map((item) => ({
 				...item,
+				sheets: item.sheets.map(
+					({ id, musicId, difficulty, notesDesigner, chart }) => ({
+						id,
+						musicId,
+						difficulty,
+						notesDesigner,
+						chart,
+					}),
+				),
 				music: {
 					...item.music,
 					audio: item.music.audio
