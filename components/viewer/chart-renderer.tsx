@@ -22,8 +22,12 @@ const sheetPixelsPerBeat = 100;
 const sheetCursorRatio = 0.82;
 const playfieldLookBehindBeats = 1;
 const sheetTileHeight = 16_000;
-const playfieldSideWidthScale = 1.2;
-const playfieldUpperRiseScale = 2.2;
+const sideLaneWidthRatios = {
+	leftInner: 2,
+	leftOuter: 2,
+	rightInner: 3,
+	rightOuter: 4,
+} as const;
 const holdColor = "#34d399";
 /** The approach window represents a finite depth range in the perspective projection. */
 const playfieldFarDistance = 4;
@@ -625,16 +629,29 @@ function paintPlayfield(
 		return center - fieldWidth / 2 + (fieldWidth * lane) / 20;
 	};
 	const lanePoint = (lane: number, y: number): [number, number] => {
-		const lowerWidth =
-			Math.abs(baseLaneX(2, y) - baseLaneX(1, y)) * playfieldSideWidthScale;
-		const lowerRise = lowerWidth * Math.tan(Math.PI / 4);
-		const upperRise = lowerWidth * playfieldUpperRiseScale;
-		if (lane === 1) return [baseLaneX(2, y) - lowerWidth, y - lowerRise];
-		if (lane === 0)
-			return [baseLaneX(2, y) - lowerWidth, y - lowerRise - upperRise];
-		if (lane === 19) return [baseLaneX(18, y) + lowerWidth, y - lowerRise];
-		if (lane === 20)
-			return [baseLaneX(18, y) + lowerWidth, y - lowerRise - upperRise];
+		const centerLaneWidth = baseLaneX(2, y) - baseLaneX(1, y);
+		const diagonalOffset = (ratio: number) =>
+			(centerLaneWidth * ratio) / Math.SQRT2;
+		const leftInnerOffset = diagonalOffset(sideLaneWidthRatios.leftInner);
+		const rightInnerOffset = diagonalOffset(sideLaneWidthRatios.rightInner);
+		const leftInnerX = baseLaneX(2, y) - leftInnerOffset;
+		const leftInnerY = y - leftInnerOffset;
+		const rightInnerX = baseLaneX(18, y) + rightInnerOffset;
+		const rightInnerY = y - rightInnerOffset;
+		if (lane === 1) return [leftInnerX, leftInnerY];
+		if (lane === 0) {
+			return [
+				leftInnerX,
+				leftInnerY - centerLaneWidth * sideLaneWidthRatios.leftOuter,
+			];
+		}
+		if (lane === 19) return [rightInnerX, rightInnerY];
+		if (lane === 20) {
+			return [
+				rightInnerX,
+				rightInnerY - centerLaneWidth * sideLaneWidthRatios.rightOuter,
+			];
+		}
 		return [baseLaneX(lane, y), y];
 	};
 	const renderedLanePointAtDepth = (
