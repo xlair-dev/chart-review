@@ -272,39 +272,35 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 								(entry) => entry.music.id === chart.musicId,
 							);
 							return (
-								<li
-									key={chart.id}
-									className="rounded-2xl border border-slate-200 bg-white p-5"
-								>
-									<div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
-										<div className="min-w-0">
-											<Link
-												className="font-semibold hover:text-sky-800"
-												href={`/feedback/${meetingId}/charts/${chart.id}`}
-											>
-												{item?.music.title ?? chart.musicId} —{" "}
-												{chart.difficulty}
-											</Link>
-											{chart.description && (
-												<p className="mt-1 max-w-full whitespace-pre-wrap text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">
-													{chart.description}
+								<li key={chart.id}>
+									<Link
+										className="block w-full rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-sky-300 hover:bg-sky-50/30 hover:shadow-sm"
+										href={`/feedback/${meetingId}/charts/${chart.id}`}
+									>
+										<div className="flex items-start gap-4">
+											<div className="min-w-0 flex-1">
+												<p className="font-semibold">
+													{item?.music.title ?? chart.musicId} —{" "}
+													{chart.difficulty}
 												</p>
-											)}
-											<p className="mt-2 text-xs text-slate-400">
-												更新 {new Date(chart.uploadedAt).toLocaleString()}
-											</p>
-											<p className="mt-2 text-sm text-slate-600">
-												投稿者: {chart.uploadedBy || "不明"}
-											</p>
-											<ChartVoteSummary votes={chart.votes} />
+												{chart.description && (
+													<p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">
+														{chart.description}
+													</p>
+												)}
+												<p className="mt-2 text-xs text-slate-400">
+													更新 {new Date(chart.uploadedAt).toLocaleString()}
+												</p>
+												<p className="mt-2 text-sm text-slate-600">
+													投稿者: {chart.uploadedBy || "不明"}
+												</p>
+												<ChartVoteSummary votes={chart.votes} />
+											</div>
+											<span className="shrink-0 rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white">
+												開く
+											</span>
 										</div>
-										<Link
-											className="shrink-0 rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white"
-											href={`/feedback/${meetingId}/charts/${chart.id}`}
-										>
-											開く
-										</Link>
-									</div>
+									</Link>
 								</li>
 							);
 						})}
