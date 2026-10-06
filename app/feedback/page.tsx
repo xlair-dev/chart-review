@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { DisplayNameControl } from "@/components/display-name-control";
 import { FeedbackBreadcrumbs } from "@/components/feedback/feedback-breadcrumbs";
 import { MeetingList } from "@/components/feedback/meeting-list";
 
 export default function FeedbackPage() {
 	return (
 		<main className="mx-auto flex min-h-screen w-full max-w-[1500px] flex-col px-4 py-6 sm:px-8">
-			<header className="flex items-center justify-between border-b border-slate-200 pb-5">
+			<header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-5">
 				<Link
 					className="text-sm font-bold tracking-[0.2em] text-slate-800"
 					href="/"
@@ -13,7 +14,12 @@ export default function FeedbackPage() {
 					XLAIR{" "}
 					<span className="font-normal text-slate-400">/ CHART REVIEW</span>
 				</Link>
-				<span className="text-xs text-slate-500">フィードバック会</span>
+				<div className="flex items-center gap-3">
+					<span className="hidden text-xs text-slate-500 sm:inline">
+						フィードバック会
+					</span>
+					<DisplayNameControl />
+				</div>
 			</header>
 			<FeedbackBreadcrumbs
 				items={[{ href: "/", label: "トップ" }, { label: "フィードバック会" }]}

@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
-import { DisplayNameField } from "@/components/display-name-field";
+import {
+	ChartVotePanel,
+	type ChartVotes,
+} from "@/components/feedback/chart-vote-panel";
 import { ChartPlayback } from "@/components/viewer/chart-playback";
 import type { ChartComment } from "@/components/viewer/chart-renderer";
 import type { CatalogItem } from "@/lib/catalog-model";
@@ -18,6 +21,8 @@ interface MeetingChart {
 	difficulty: string;
 	description: string;
 	fileName: string;
+	uploadedBy: string;
+	votes: ChartVotes;
 }
 
 interface Comment {
@@ -57,6 +62,7 @@ export function FeedbackChartReview({
 	const [descriptionDraft, setDescriptionDraft] = useState("");
 	const [isSavingDescription, setIsSavingDescription] = useState(false);
 	const [isSavingComment, setIsSavingComment] = useState(false);
+	const [isSavingVote, setIsSavingVote] = useState(false);
 	const [pendingCommentDeletion, setPendingCommentDeletion] =
 		useState<Comment>();
 	const [isDeletingComment, setIsDeletingComment] = useState(false);
@@ -205,6 +211,50 @@ export function FeedbackChartReview({
 		}
 	}
 
+	async function castVote(vote: "passed" | "failed" | null) {
+		if (!displayName.trim()) return;
+		setIsSavingVote(true);
+		try {
+			const response = await fetch(
+				`/api/meetings/${meetingId}/charts/${chartId}/votes`,
+				{
+					method: vote ? "PUT" : "DELETE",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ displayName, ...(vote && { vote }) }),
+				},
+			);
+			if (!response.ok) {
+				const result = (await response.json().catch(() => ({}))) as {
+					error?: string;
+				};
+				setError(result.error ?? "投票を保存できませんでした。");
+				return;
+			}
+			setChartRecord((current) => {
+				if (!current) return current;
+				const key = displayName
+					.trim()
+					.normalize("NFKC")
+					.toLocaleLowerCase("ja-JP");
+				const next: ChartVotes = {
+					passed: current.votes.passed.filter(
+						(name) => name.normalize("NFKC").toLocaleLowerCase("ja-JP") !== key,
+					),
+					failed: current.votes.failed.filter(
+						(name) => name.normalize("NFKC").toLocaleLowerCase("ja-JP") !== key,
+					),
+				};
+				if (vote) next[vote].push(displayName.trim());
+				return { ...current, votes: next };
+			});
+			setError("");
+		} catch {
+			setError("投票を保存できませんでした。通信状態を確認してください。");
+		} finally {
+			setIsSavingVote(false);
+		}
+	}
+
 	async function saveDescription() {
 		if (!chartRecord) return;
 		setIsSavingDescription(true);
@@ -307,6 +357,9 @@ export function FeedbackChartReview({
 					<h1 className="mt-1 text-2xl font-semibold">
 						{music.title} — {chartRecord.difficulty}
 					</h1>
+					<p className="mt-1 text-sm text-slate-500">
+						投稿者: {chartRecord.uploadedBy || "不明"}
+					</p>
 					{isEditingDescription ? (
 						<div className="mt-2 max-w-3xl">
 							<textarea
@@ -371,6 +424,12 @@ export function FeedbackChartReview({
 					>
 						{isPassed ? "合格を取り消す" : "合格にする"}
 					</button>
+					<a
+						className="rounded-lg border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
+						href={`/api/meetings/${meetingId}/charts/${chartId}/file`}
+					>
+						譜面をダウンロード
+					</a>
 					{!isPassed && (
 						<button
 							className="rounded-lg border border-rose-200 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
@@ -382,6 +441,12 @@ export function FeedbackChartReview({
 					)}
 				</div>
 			</div>
+			<ChartVotePanel
+				displayName={displayName}
+				isSaving={isSavingVote}
+				onVote={(vote) => void castVote(vote)}
+				votes={chartRecord.votes}
+			/>
 			<ConfirmationDialog
 				confirmLabel="譜面とコメントを削除"
 				description="この会から譜面を削除します。譜面に付いたコメントも削除されます。"
@@ -432,7 +497,6 @@ export function FeedbackChartReview({
 						commentLanePosition === null
 							? undefined
 							: {
-									displayNameField: <DisplayNameField />,
 									isSaving: isSavingComment,
 									lanePosition: commentLanePosition,
 									onBodyChange: setCommentBody,

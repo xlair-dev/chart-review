@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { DisplayNameControl } from "@/components/display-name-control";
 import { ChartFileLoader } from "@/components/viewer/chart-file-loader";
 
 export default function ViewerPage() {
 	return (
 		<main className="mx-auto min-h-screen w-full max-w-[1500px] px-4 py-6 sm:px-8">
-			<header className="mb-6 flex items-center justify-between border-b border-slate-200 pb-4">
+			<header className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-4">
 				<Link
 					className="text-sm font-bold tracking-[0.2em] text-slate-800"
 					href="/"
@@ -12,7 +13,12 @@ export default function ViewerPage() {
 					XLAIR{" "}
 					<span className="font-normal text-slate-400">/ CHART REVIEW</span>
 				</Link>
-				<span className="text-xs text-slate-500">譜面ビューワー</span>
+				<div className="flex items-center gap-3">
+					<span className="hidden text-xs text-slate-500 sm:inline">
+						譜面ビューワー
+					</span>
+					<DisplayNameControl />
+				</div>
 			</header>
 			<section className="py-12 sm:py-16">
 				<p className="text-xs font-semibold tracking-[0.24em] text-sky-700">
