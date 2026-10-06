@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DisplayNameControl } from "@/components/display-name-control";
 
 const workspaces = [
 	{
@@ -20,7 +21,7 @@ const workspaces = [
 export default function Home() {
 	return (
 		<main className="mx-auto flex min-h-screen w-full max-w-[1500px] flex-col px-4 py-6 sm:px-8">
-			<header className="flex items-center justify-between border-b border-slate-200 pb-5">
+			<header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-5">
 				<a
 					className="text-sm font-bold tracking-[0.2em] text-slate-800"
 					href="/"
@@ -28,9 +29,12 @@ export default function Home() {
 					XLAIR{" "}
 					<span className="font-normal text-slate-400">/ CHART REVIEW</span>
 				</a>
-				<span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">
-					譜面制作サポート
-				</span>
+				<div className="flex items-center gap-2">
+					<span className="hidden rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 sm:inline">
+						譜面制作サポート
+					</span>
+					<DisplayNameControl />
+				</div>
 			</header>
 			<section
 				aria-label="ワークスペース"

@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
+import {
+	ChartVoteSummary,
+	type ChartVotes,
+} from "@/components/feedback/chart-vote-panel";
 import type { CatalogItem, CatalogSheet } from "@/lib/catalog-model";
+import { useDisplayName } from "@/lib/use-display-name";
 
 interface Meeting {
 	id: string;
@@ -17,6 +22,8 @@ interface MeetingChart {
 	musicId: string;
 	difficulty: CatalogSheet["difficulty"];
 	description: string;
+	uploadedBy: string;
+	votes: ChartVotes;
 	uploadedAt: string;
 	fileName: string;
 }
@@ -44,6 +51,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 	const [isReplaceConfirmationOpen, setIsReplaceConfirmationOpen] =
 		useState(false);
 	const fileInput = useRef<HTMLInputElement>(null);
+	const { displayName } = useDisplayName();
 
 	const loadData = useCallback(async () => {
 		setIsLoading(true);
@@ -120,6 +128,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 		form.set("musicId", chosenSheet.sheet.musicId);
 		form.set("difficulty", chosenSheet.sheet.difficulty);
 		form.set("description", description);
+		form.set("displayName", displayName);
 		form.set("file", file);
 		try {
 			const response = await fetch(`/api/meetings/${meetingId}/charts`, {
@@ -240,7 +249,7 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 
 			<ConfirmationDialog
 				confirmLabel="譜面を差し替える"
-				description="譜面を差し替えると、この譜面に付いたコメントは削除されます。"
+				description="譜面を差し替えると、この譜面に付いたコメントと投票は削除され、投稿者は今回のアップロード者に更新されます。"
 				isPending={isSaving}
 				onCancel={() => setIsReplaceConfirmationOpen(false)}
 				onConfirm={() => void saveChart()}
@@ -263,31 +272,39 @@ export function MeetingDetail({ meetingId }: { meetingId: string }) {
 								(entry) => entry.music.id === chart.musicId,
 							);
 							return (
-								<li key={chart.id}>
-									<Link
-										className="block w-full rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-sky-300 hover:bg-sky-50/30 hover:shadow-sm"
-										href={`/feedback/${meetingId}/charts/${chart.id}`}
-									>
-										<div className="flex flex-wrap items-center justify-between gap-4">
-											<div>
-												<p className="font-semibold">
-													{item?.music.title ?? chart.musicId} —{" "}
-													{chart.difficulty}
+								<li
+									key={chart.id}
+									className="rounded-2xl border border-slate-200 bg-white p-5"
+								>
+									<div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+										<div className="min-w-0">
+											<Link
+												className="font-semibold hover:text-sky-800"
+												href={`/feedback/${meetingId}/charts/${chart.id}`}
+											>
+												{item?.music.title ?? chart.musicId} —{" "}
+												{chart.difficulty}
+											</Link>
+											{chart.description && (
+												<p className="mt-1 max-w-full whitespace-pre-wrap text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">
+													{chart.description}
 												</p>
-												{chart.description && (
-													<p className="mt-1 text-sm leading-6 text-slate-600">
-														{chart.description}
-													</p>
-												)}
-												<p className="mt-2 text-xs text-slate-400">
-													更新 {new Date(chart.uploadedAt).toLocaleString()}
-												</p>
-											</div>
-											<span className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white">
-												開く
-											</span>
+											)}
+											<p className="mt-2 text-xs text-slate-400">
+												更新 {new Date(chart.uploadedAt).toLocaleString()}
+											</p>
+											<p className="mt-2 text-sm text-slate-600">
+												投稿者: {chart.uploadedBy || "不明"}
+											</p>
+											<ChartVoteSummary votes={chart.votes} />
 										</div>
-									</Link>
+										<Link
+											className="shrink-0 rounded-lg bg-sky-700 px-4 py-2 text-sm font-medium text-white"
+											href={`/feedback/${meetingId}/charts/${chart.id}`}
+										>
+											開く
+										</Link>
+									</div>
 								</li>
 							);
 						})}

@@ -19,16 +19,54 @@ export async function GET(
 		.get(meetingId);
 	if (!meeting)
 		return Response.json({ error: "FB 会が見つかりません。" }, { status: 404 });
-	const rows = database
+	const charts = database
 		.prepare(`
 		SELECT c.id, c.music_id AS musicId, c.difficulty, c.description,
-		       c.uploaded_at AS uploadedAt, c.file_name AS fileName
+		       c.uploaded_by AS uploadedBy, c.uploaded_at AS uploadedAt,
+		       c.file_name AS fileName
 		FROM meeting_charts c
 	WHERE c.meeting_id = ?
 	ORDER BY c.uploaded_at DESC
 	`)
-		.all(meetingId);
-	return Response.json(rows);
+		.all(meetingId) as {
+		id: string;
+		musicId: string;
+		difficulty: string;
+		description: string;
+		uploadedBy: string;
+		uploadedAt: string;
+		fileName: string;
+	}[];
+	const votes = database
+		.prepare(`
+		SELECT meeting_chart_id AS chartId, display_name AS displayName, vote
+		FROM chart_votes
+		WHERE meeting_chart_id IN (SELECT id FROM meeting_charts WHERE meeting_id = ?)
+		ORDER BY display_name COLLATE NOCASE
+	`)
+		.all(meetingId) as {
+		chartId: string;
+		displayName: string;
+		vote: "passed" | "failed";
+	}[];
+	const votesByChart = new Map<
+		string,
+		{ passed: string[]; failed: string[] }
+	>();
+	for (const vote of votes) {
+		const chartVotes = votesByChart.get(vote.chartId) ?? {
+			passed: [],
+			failed: [],
+		};
+		chartVotes[vote.vote].push(vote.displayName);
+		votesByChart.set(vote.chartId, chartVotes);
+	}
+	return Response.json(
+		charts.map((chart) => ({
+			...chart,
+			votes: votesByChart.get(chart.id) ?? { passed: [], failed: [] },
+		})),
+	);
 }
 
 export async function POST(
@@ -62,6 +100,7 @@ export async function POST(
 	const musicId = form.get("musicId");
 	const difficulty = form.get("difficulty");
 	const description = form.get("description");
+	const displayName = form.get("displayName");
 	const file = form.get("file");
 	const extension =
 		file instanceof File ? file.name.split(".").pop()?.toLowerCase() : "";
@@ -71,6 +110,9 @@ export async function POST(
 			difficulty as "basic" | "advanced" | "master",
 		) ||
 		typeof description !== "string" ||
+		typeof displayName !== "string" ||
+		displayName.trim().length === 0 ||
+		displayName.trim().length > 32 ||
 		!(file instanceof File) ||
 		!(["c2s", "sus", "ugc"] as const).includes(
 			extension as "c2s" | "sus" | "ugc",
@@ -83,7 +125,7 @@ export async function POST(
 			{
 				error: isTooLarge
 					? `譜面ファイルは ${Math.floor(maxUploadSizeBytes / 1024 / 1024)} MiB 以下にしてください。`
-					: "有効な C2S、SUS、UGC 譜面と難易度を選んでください。",
+					: "表示名と有効な C2S、SUS、UGC 譜面、難易度を確認してください。",
 			},
 			{
 				status: isTooLarge ? 413 : 400,
@@ -144,19 +186,28 @@ export async function POST(
 					const update = database
 						.prepare(`
 						UPDATE meeting_charts
-						SET file_name = ?, description = ?, uploaded_at = ? WHERE id = ?
+						SET file_name = ?, description = ?, uploaded_by = ?, uploaded_at = ? WHERE id = ?
 					`)
-						.run(fileName, description, uploadedAt, chartId);
+						.run(
+							fileName,
+							description,
+							displayName.trim(),
+							uploadedAt,
+							chartId,
+						);
 					if (update.changes !== 1)
 						throw new Error("差し替え対象の譜面が見つかりません。");
 					database
 						.prepare("DELETE FROM comments WHERE meeting_chart_id = ?")
 						.run(chartId);
+					database
+						.prepare("DELETE FROM chart_votes WHERE meeting_chart_id = ?")
+						.run(chartId);
 				} else {
 					database
 						.prepare(`
-						INSERT INTO meeting_charts (id, meeting_id, music_id, difficulty, file_name, description, uploaded_at)
-						VALUES (?, ?, ?, ?, ?, ?, ?)
+						INSERT INTO meeting_charts (id, meeting_id, music_id, difficulty, file_name, description, uploaded_by, uploaded_at)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 					`)
 						.run(
 							chartId,
@@ -165,6 +216,7 @@ export async function POST(
 							difficulty,
 							fileName,
 							description,
+							displayName.trim(),
 							uploadedAt,
 						);
 				}
@@ -191,7 +243,14 @@ export async function POST(
 				() => {},
 			);
 		return Response.json(
-			{ id: result.chartId, musicId, difficulty, description, uploadedAt },
+			{
+				id: result.chartId,
+				musicId,
+				difficulty,
+				description,
+				uploadedBy: displayName.trim(),
+				uploadedAt,
+			},
 			{ status: result.previousFileName ? 200 : 201 },
 		);
 	} catch (error) {

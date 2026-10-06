@@ -1,12 +1,7 @@
 "use client";
 
-import {
-	type ReactNode,
-	useEffect,
-	useLayoutEffect,
-	useRef,
-	useState,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { CommentBody } from "@/components/feedback/comment-body";
 import type { ChartData, Lane, Note, SideButton } from "@/lib/chart-model";
 import { sideXTapPairs } from "@/lib/chart-note-relations";
 import { positionValue } from "@/lib/chart-position";
@@ -65,7 +60,6 @@ export interface ChartCommentComposer {
 	lanePosition: number;
 	body: string;
 	isSaving: boolean;
-	displayNameField: ReactNode;
 	onBodyChange: (body: string) => void;
 	onSubmit: () => void;
 	onCancel: () => void;
@@ -1403,14 +1397,9 @@ export function ChartRenderer({
 						)}
 						{!isPlaying &&
 							comments.map((comment) => (
-								<button
-									className="absolute z-10 w-max max-w-[min(28rem,80%)] break-words rounded-xl border border-sky-200/80 bg-sky-50/60 px-3 py-2 text-left text-xs text-slate-800 shadow-lg backdrop-blur-sm transition hover:border-rose-300 hover:bg-rose-50/80 [overflow-wrap:anywhere]"
+								<div
+									className="absolute z-10 w-max max-w-[min(28rem,80%)] break-words rounded-xl border border-sky-200/80 bg-sky-50/60 px-3 py-2 text-left text-xs text-slate-800 shadow-lg backdrop-blur-sm [overflow-wrap:anywhere]"
 									key={comment.id}
-									type="button"
-									onClick={(event) => {
-										event.stopPropagation();
-										onCommentDelete?.(comment);
-									}}
 									style={{
 										top: sheetPositionStyle(comment.position, sheetEnd),
 										left: sheetLaneStyle(comment.lanePosition),
@@ -1421,9 +1410,22 @@ export function ChartRenderer({
 										{comment.displayName}
 									</strong>
 									<span className="mt-1 block whitespace-pre-wrap leading-5">
-										{comment.body}
+										<CommentBody text={comment.body} />
 									</span>
-								</button>
+									{onCommentDelete && (
+										<button
+											aria-label="コメントを削除"
+											className="mt-1 text-[10px] text-slate-500 underline hover:text-rose-700"
+											onClick={(event) => {
+												event.stopPropagation();
+												onCommentDelete(comment);
+											}}
+											type="button"
+										>
+											削除
+										</button>
+									)}
+								</div>
 							))}
 					</div>
 					<div className="pointer-events-none sticky bottom-[18%] h-0 border-t-2 border-rose-400 shadow-[0_0_12px_#fb7185]" />
@@ -1446,7 +1448,6 @@ export function ChartRenderer({
 								閉じる
 							</button>
 						</div>
-						<div className="mt-3">{commentComposer.displayNameField}</div>
 						<textarea
 							className="mt-3 w-full rounded-lg border border-slate-300 p-3 text-sm"
 							maxLength={2000}
@@ -1553,9 +1554,9 @@ export function ChartRenderer({
 							) : (
 								<ul className="mt-3 divide-y divide-slate-100">
 									{comments.map((comment) => (
-										<li key={comment.id}>
+										<li key={comment.id} className="py-3 first:pt-0 last:pb-0">
 											<button
-												className="block w-full rounded-lg py-3 text-left transition first:pt-0 last:pb-0 hover:bg-sky-50 hover:text-sky-900"
+												className="block w-full rounded-lg text-left hover:bg-sky-50 hover:text-sky-900"
 												onClick={() => onCommentSelect?.(comment)}
 												type="button"
 											>
@@ -1566,10 +1567,10 @@ export function ChartRenderer({
 													{comment.position.toFixed(2)} 拍 ・ レーン{" "}
 													{comment.lanePosition.toFixed(1)}
 												</span>
-												<span className="mt-1 block whitespace-pre-wrap text-sm leading-5 text-slate-600">
-													{comment.body}
-												</span>
 											</button>
+											<div className="mt-1 whitespace-pre-wrap text-sm leading-5 text-slate-600">
+												<CommentBody text={comment.body} />
+											</div>
 										</li>
 									))}
 								</ul>
