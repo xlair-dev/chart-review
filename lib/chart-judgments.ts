@@ -9,7 +9,6 @@ export type JudgmentSound =
 	| "flick"
 	| "sideTap"
 	| "holdTap"
-	| "holdNote"
 	| "sideHold"
 	| "slideHold";
 
@@ -53,7 +52,7 @@ function slidePointJudgments(
 	return [
 		{
 			beat: startBeat,
-			sound: "slideTap",
+			sound: "slideTap" as const,
 		},
 		...points.flatMap((point) => {
 			if (point.kind !== "visible") return [];
@@ -65,7 +64,7 @@ function slidePointJudgments(
 			return [
 				{
 					beat,
-					sound: isSideLane ? ("sideTap" as const) : ("holdNote" as const),
+					sound: isSideLane ? ("sideTap" as const) : ("holdTap" as const),
 				},
 			];
 		}),
@@ -100,7 +99,7 @@ function noteJudgments(
 				note.kind.type === "airHold"
 					? note.kind.checkpoints.map((checkpoint) => ({
 							beat: positionValue(checkpoint),
-							sound: "holdNote" as const,
+							sound: "holdTap" as const,
 						}))
 					: []),
 				{
