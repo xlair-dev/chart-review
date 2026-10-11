@@ -24,22 +24,26 @@ function requestAudioPlay(player: HTMLAudioElement) {
 }
 
 const judgmentSoundSources: Record<JudgmentSound, string> = {
-	tap: "/sounds/judgments/tap.mp3",
-	flick: "/sounds/judgments/flick.mp3",
-	sideTap: "/sounds/judgments/side-tap.mp3",
-	hold: "/sounds/judgments/hold.mp3",
-	sideHold: "/sounds/judgments/side-hold.mp3",
-	slideHold: "/sounds/judgments/slide-hold.mp3",
+	tap: "/sounds/judgments/XLAIR_se_retake2_タップ.wav",
+	slideTap: "/sounds/judgments/XLAIR_se_retake2_スライド-タップ時.wav",
+	xTap: "/sounds/judgments/XLAIR_se_retake2_Xタップ.wav",
+	flick: "/sounds/judgments/XLAIR_se_retake2_フリック.wav",
+	sideTap: "/sounds/judgments/XLAIR_se_retake2_サイド-タップ時.wav",
+	holdNote: "/sounds/judgments/XLAIR_se_retake2_ホールド中ノーツ.wav",
+	sideHold: "/sounds/judgments/XLAIR_se_retake2_サイド-ホールド.wav",
+	slideHold: "/sounds/judgments/XLAIR_se_retake2_スライド-ホールド.wav",
 };
 
-function judgmentVolume(sound: JudgmentSound): number {
+function judgmentVolume(_sound: JudgmentSound): number {
+	/*
 	if (sound === "slideHold") return 0.18;
 	if (sound === "sideHold") return 0.22;
 	if (sound === "tap") return 1.7;
-	if (sound === "flick" || sound === "sideTap") {
+	if (["flick", "xTap", "sideTap"].includes(sound)) {
 		return 1.6;
 	}
-	return 0.65;
+	*/
+	return 0.5;
 }
 
 export function ChartPlayback({
@@ -324,10 +328,27 @@ export function ChartPlayback({
 		) {
 			const transition =
 				soundPlan.sustainedTransitions[sustainedSoundCursor.current];
+			const previousSlideHoldCount = activeSustainedSounds.current.slideHold;
+			const startsNewSlide =
+				previousSlideHoldCount === 0 && transition.slideHoldCount > 0;
+			const endsSlide =
+				previousSlideHoldCount > 0 && transition.slideHoldCount === 0;
+			if (endsSlide) {
+				const player = judgmentPlayers.current.slideHold?.[0];
+				player?.pause();
+				if (player) player.currentTime = 0;
+			}
 			activeSustainedSounds.current = {
 				sideHold: transition.sideHoldCount,
 				slideHold: transition.slideHoldCount,
 			};
+			if (startsNewSlide && audio.current && !audio.current.paused) {
+				const player = judgmentPlayers.current.slideHold?.[0];
+				if (player) {
+					player.currentTime = 0;
+					requestAudioPlay(player);
+				}
+			}
 			sustainedSoundCursor.current += 1;
 		}
 		syncSustainedSounds();
