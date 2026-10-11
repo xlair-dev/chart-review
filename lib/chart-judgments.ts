@@ -4,10 +4,11 @@ import { positionValue } from "@/lib/chart-position";
 
 export type JudgmentSound =
 	| "tap"
+	| "slideTap"
 	| "xTap"
 	| "flick"
 	| "sideTap"
-	| "hold"
+	| "holdNote"
 	| "sideHold"
 	| "slideHold";
 
@@ -51,7 +52,7 @@ function slidePointJudgments(
 	return [
 		{
 			beat: startBeat,
-			sound: isSideLane ? "sideTap" : "tap",
+			sound: "slideTap",
 		},
 		...points.flatMap((point) => {
 			if (point.kind !== "visible") return [];
@@ -63,7 +64,7 @@ function slidePointJudgments(
 			return [
 				{
 					beat,
-					sound: isSideLane ? ("sideTap" as const) : ("hold" as const),
+					sound: isSideLane ? ("sideTap" as const) : ("holdNote" as const),
 				},
 			];
 		}),
@@ -92,18 +93,18 @@ function noteJudgments(
 		case "exHold":
 		case "airHold":
 			return [
-				{ beat, sound: isSideLane ? "sideTap" : "hold" },
+				{ beat, sound: isSideLane ? "sideTap" : "tap" },
 				...(note.kind.type === "hold" ||
 				note.kind.type === "exHold" ||
 				note.kind.type === "airHold"
 					? note.kind.checkpoints.map((checkpoint) => ({
 							beat: positionValue(checkpoint),
-							sound: "hold" as const,
+							sound: "holdNote" as const,
 						}))
 					: []),
 				{
 					beat: positionValue(note.kind.end),
-					sound: isSideLane ? "sideTap" : "hold",
+					sound: isSideLane ? "sideTap" : "tap",
 				},
 			];
 		case "slide":
@@ -146,10 +147,7 @@ function sustainedSoundInterval(note: Note) {
 			end: positionValue(note.kind.end),
 		};
 	}
-	if (
-		note.kind.type === "slide" ||
-		note.kind.type === "exSlide"
-	) {
+	if (note.kind.type === "slide" || note.kind.type === "exSlide") {
 		const end = note.kind.points.at(-1);
 		if (end) {
 			return {

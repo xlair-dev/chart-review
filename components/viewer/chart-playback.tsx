@@ -25,10 +25,11 @@ function requestAudioPlay(player: HTMLAudioElement) {
 
 const judgmentSoundSources: Record<JudgmentSound, string> = {
 	tap: "/sounds/judgments/tap.mp3",
+	slideTap: "/sounds/judgments/slide-tap.mp3",
 	xTap: "/sounds/judgments/x-tap.mp3",
 	flick: "/sounds/judgments/flick.mp3",
 	sideTap: "/sounds/judgments/side-tap.mp3",
-	hold: "/sounds/judgments/hold.mp3",
+	holdNote: "/sounds/judgments/hold-note.mp3",
 	sideHold: "/sounds/judgments/side-hold.mp3",
 	slideHold: "/sounds/judgments/slide-hold.mp3",
 };
