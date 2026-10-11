@@ -2,10 +2,11 @@
 
 use chart::{
     AirColor, AirCrushColor, AirCrushInterval, AirDirection, AirPoint, AirProperties, Chart,
-    ChartMode, ExDirection, Lane, NoteAttributes, NoteId, NoteKind, Position, ScrollScope,
-    ScrollSpeedChange, SideButton, SlidePoint, SlidePointKind, TapKind, TempoChange,
+    ChartMode, ExDirection, Lane, MeasureTimeline, NoteAttributes, NoteId, NoteKind, Position,
+    ScrollScope, ScrollSpeedChange, SideButton, SlidePoint, SlidePointKind, TapKind, TempoChange,
 };
 use serde::Serialize;
+use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 
 /// Parses a chart using the selected interpretation rules and returns its shared chart model as JSON.
@@ -21,10 +22,231 @@ pub fn parse_chart_json(format: &str, mode: &str, source: &[u8]) -> Result<Strin
         "normal" => ChartMode::Normal,
         _ => return Err(JsValue::from_str("unsupported chart mode")),
     };
-    let chart = chart_converter::parse_bytes_with_mode(format, mode, source)
+    let (source, extended_speeds) = if format.extension() == "ugc" {
+        let source = std::str::from_utf8(source)
+            .map_err(|_| JsValue::from_str("UGC charts must use UTF-8 encoding"))?;
+        let (source, speeds) = parse_ugc_speed_fields(source)?;
+        (source, speeds)
+    } else {
+        (source.to_vec(), Vec::new())
+    };
+    let mut chart = chart_converter::parse_bytes_with_mode(format, mode, &source)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    for speed in extended_speeds {
+        chart.add_scroll_speed_change(speed);
+    }
     serde_json::to_string(&ChartData::from_chart(format.extension(), &chart))
         .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+struct UgcSpeedField {
+    id: u32,
+    bar_tick: String,
+    lane: Lane,
+    length_ticks: u64,
+    line: usize,
+}
+
+struct UgcSpeedPoint {
+    offset_ticks: u64,
+    speed: f64,
+}
+
+/// Resolves UMGR v2.01 speed fields that the pinned chart converter does not parse.
+/// Field positions depend on the chart's UGC tick resolution, measure lengths, and SOFFSET flag.
+fn parse_ugc_speed_fields(source: &str) -> Result<(Vec<u8>, Vec<ScrollSpeedChange>), JsValue> {
+    let mut ticks_per_beat = 480_u64;
+    let mut timeline = MeasureTimeline::new(
+        Position::new(4, 1).map_err(|error| JsValue::from_str(&error.to_string()))?,
+    );
+    let mut measure_offset = false;
+    let mut definitions = BTreeMap::<u32, Vec<UgcSpeedPoint>>::new();
+    let mut fields = Vec::new();
+    let mut filtered = Vec::with_capacity(source.len());
+    for (line_index, line) in source.lines().enumerate() {
+        let line_number = line_index + 1;
+        let trimmed = line.trim();
+        if let Some(value) = trimmed.strip_prefix('@') {
+            let (name, args) = value.split_once('\t').unwrap_or((value, ""));
+            let args: Vec<_> = args.split('\t').collect();
+            match name {
+                "TICKS" => {
+                    ticks_per_beat = parse_ugc_u64(args.first(), line_number)?;
+                    if ticks_per_beat == 0 {
+                        return Err(ugc_line_error(
+                            line_number,
+                            "TICKS must be greater than zero",
+                        ));
+                    }
+                }
+                "BEAT" => {
+                    let measure = parse_ugc_u32(args.first(), line_number)?;
+                    let numerator = parse_ugc_u64(args.get(1), line_number)?
+                        .checked_mul(4)
+                        .ok_or_else(|| ugc_line_error(line_number, "BEAT length overflow"))?;
+                    let denominator = parse_ugc_u64(args.get(2), line_number)?;
+                    let length = Position::new(numerator, denominator)
+                        .map_err(|error| ugc_line_error(line_number, &error.to_string()))?;
+                    timeline.set_length(measure, length);
+                }
+                "FLAG" if args.first() == Some(&"SOFFSET") => {
+                    measure_offset = args.get(1) == Some(&"TRUE");
+                }
+                "SPDDEF" => {
+                    if args.len() >= 3 {
+                        let id = parse_ugc_u32(args.first(), line_number)?;
+                        let offset_ticks = parse_ugc_u64(args.get(1), line_number)?;
+                        let speed = parse_ugc_f64(args.get(2), line_number)?;
+                        definitions.entry(id).or_default().push(UgcSpeedPoint {
+                            offset_ticks,
+                            speed,
+                        });
+                    }
+                }
+                "SPDFLD" => {
+                    if args.len() >= 5 {
+                        let id = parse_ugc_u32(args.first(), line_number)?;
+                        let bar_tick = args.get(1).copied().unwrap_or_default().to_owned();
+                        let start = parse_ugc_base36(args.get(2), line_number)?;
+                        let width = parse_ugc_base36(args.get(3), line_number)?;
+                        let lane = Lane::slider(start, width)
+                            .map_err(|error| ugc_line_error(line_number, &error.to_string()))?;
+                        let length_ticks = parse_ugc_u64(args.get(4), line_number)?;
+                        fields.push(UgcSpeedField {
+                            id,
+                            bar_tick,
+                            lane,
+                            length_ticks,
+                            line: line_number,
+                        });
+                    }
+                }
+                _ => {}
+            }
+            if name == "SPDDEF" || name == "SPDFLD" {
+                filtered.extend_from_slice(b"\n");
+                continue;
+            }
+        }
+        filtered.extend_from_slice(line.as_bytes());
+        filtered.extend_from_slice(b"\n");
+    }
+    let mut changes = Vec::new();
+    for field in fields {
+        let points = definitions
+            .get(&field.id)
+            .ok_or_else(|| ugc_line_error(field.line, "undefined SPDDEF in SPDFLD"))?;
+        let (measure, tick) = field
+            .bar_tick
+            .split_once('\'')
+            .ok_or_else(|| ugc_line_error(field.line, "invalid BarTick in SPDFLD"))?;
+        let measure = measure
+            .parse::<u32>()
+            .map_err(|_| ugc_line_error(field.line, "invalid measure in SPDFLD"))?;
+        let tick = tick
+            .parse::<u64>()
+            .map_err(|_| ugc_line_error(field.line, "invalid tick in SPDFLD"))?;
+        let position = ugc_position(
+            &timeline,
+            ticks_per_beat,
+            measure,
+            tick,
+            measure_offset,
+            field.line,
+        )?;
+        let mut points: Vec<_> = points.iter().collect();
+        points.sort_by_key(|point| point.offset_ticks);
+        for (index, point) in points.iter().enumerate() {
+            if point.offset_ticks >= field.length_ticks {
+                continue;
+            }
+            let end = points
+                .iter()
+                .skip(index + 1)
+                .find(|next| next.offset_ticks > point.offset_ticks)
+                .map(|next| next.offset_ticks)
+                .filter(|next| *next < field.length_ticks)
+                .unwrap_or(field.length_ticks);
+            let duration = Position::new(end - point.offset_ticks, ticks_per_beat)
+                .map_err(|error| ugc_line_error(field.line, &error.to_string()))?;
+            let change_position = position
+                .checked_add(
+                    Position::new(point.offset_ticks, ticks_per_beat)
+                        .map_err(|error| ugc_line_error(field.line, &error.to_string()))?,
+                )
+                .map_err(|error| ugc_line_error(field.line, &error.to_string()))?;
+            let change = ScrollSpeedChange::with_duration(
+                change_position,
+                point.speed,
+                ScrollScope::Lane(field.lane),
+                duration,
+            )
+            .map_err(|error| ugc_line_error(field.line, &error.to_string()))?;
+            changes.push(change);
+        }
+    }
+    Ok((filtered, changes))
+}
+
+fn ugc_position(
+    timeline: &MeasureTimeline,
+    ticks_per_beat: u64,
+    measure: u32,
+    tick: u64,
+    measure_offset: bool,
+    line: usize,
+) -> Result<Position, JsValue> {
+    let ticks_per_measure = ticks_per_beat
+        .checked_mul(4)
+        .ok_or_else(|| ugc_line_error(line, "tick resolution overflow"))?;
+    let mut position = timeline
+        .position(measure, tick, ticks_per_measure)
+        .map_err(|error| ugc_line_error(line, &error.to_string()))?;
+    if measure_offset {
+        position = position
+            .checked_add(
+                timeline
+                    .position(1, 0, ticks_per_measure)
+                    .map_err(|error| ugc_line_error(line, &error.to_string()))?,
+            )
+            .map_err(|error| ugc_line_error(line, &error.to_string()))?;
+    }
+    Ok(position)
+}
+
+fn parse_ugc_u64(value: Option<&&str>, line: usize) -> Result<u64, JsValue> {
+    value
+        .and_then(|value| value.parse().ok())
+        .ok_or_else(|| ugc_line_error(line, "invalid integer"))
+}
+
+fn parse_ugc_u32(value: Option<&&str>, line: usize) -> Result<u32, JsValue> {
+    value
+        .and_then(|value| value.parse().ok())
+        .ok_or_else(|| ugc_line_error(line, "invalid ID"))
+}
+
+fn parse_ugc_f64(value: Option<&&str>, line: usize) -> Result<f64, JsValue> {
+    let value = value
+        .and_then(|value| value.parse::<f64>().ok())
+        .ok_or_else(|| ugc_line_error(line, "invalid speed"))?;
+    if !value.is_finite() {
+        return Err(ugc_line_error(line, "speed must be finite"));
+    }
+    Ok(value)
+}
+
+fn parse_ugc_base36(value: Option<&&str>, line: usize) -> Result<u8, JsValue> {
+    let value = value
+        .filter(|value| value.len() == 1)
+        .and_then(|value| value.chars().next())
+        .and_then(|value| value.to_digit(36))
+        .ok_or_else(|| ugc_line_error(line, "invalid lane"))?;
+    u8::try_from(value).map_err(|_| ugc_line_error(line, "lane is out of range"))
+}
+
+fn ugc_line_error(line: usize, message: &str) -> JsValue {
+    JsValue::from_str(&format!("UGC line {line}: {message}"))
 }
 
 #[derive(Serialize)]
@@ -286,7 +508,11 @@ impl From<&NoteKind> for NoteKindData {
                 end: (*end).into(),
                 checkpoints: checkpoints.iter().copied().map(Into::into).collect(),
             },
-            NoteKind::ExHold { end, checkpoints, direction } => Self::ExHold {
+            NoteKind::ExHold {
+                end,
+                checkpoints,
+                direction,
+            } => Self::ExHold {
                 end: (*end).into(),
                 checkpoints: checkpoints.iter().copied().map(Into::into).collect(),
                 direction: ex_direction_name(*direction).to_owned(),

@@ -860,13 +860,26 @@ function paintPlayfield(
 			);
 		const speedAt = (position: number) => {
 			let speed = 1;
+			let priority = -1;
 			for (const change of changes) {
 				const start = positionValue(change.position);
 				const end =
 					change.duration === null
 						? Number.POSITIVE_INFINITY
 						: start + positionValue(change.duration);
-				if (position >= start && position < end) speed = change.speed;
+				if (position < start || position >= end) continue;
+				const changePriority =
+					change.scope.type === "global"
+						? 0
+						: change.scope.type === "group"
+							? 1
+							: change.scope.type === "lane"
+								? 2
+								: 3;
+				if (changePriority >= priority) {
+					speed = change.speed;
+					priority = changePriority;
+				}
 			}
 			return speed;
 		};
