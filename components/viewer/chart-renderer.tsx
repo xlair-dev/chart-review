@@ -225,17 +225,6 @@ function paintNoteHead(
 		context.beginPath();
 		context.roundRect(x, y - height / 2, width, height, height * 0.4);
 		context.fill();
-		if (note.kind.type === "tap" && note.kind.tap.type === "xTap") {
-			context.strokeStyle = "#713f12";
-			context.lineWidth = Math.max(1, height * 0.16);
-			context.lineCap = "round";
-			context.beginPath();
-			context.moveTo(x + width * 0.3, y - height * 0.2);
-			context.lineTo(x + width * 0.7, y + height * 0.2);
-			context.moveTo(x + width * 0.7, y - height * 0.2);
-			context.lineTo(x + width * 0.3, y + height * 0.2);
-			context.stroke();
-		}
 		if (angle !== undefined) context.restore();
 		return;
 	}
@@ -1006,14 +995,26 @@ function paintPlayfield(
 		data,
 		currentBeat - playfieldLookBehindBeats,
 		currentBeat + approachBeats,
-	).map((prepared) => ({
-		prepared,
-		path: playfieldPathPoints(
-			prepared.playfieldPath,
-			currentBeat,
-			approachBeats,
-		),
-	}));
+	)
+		.map((prepared) => ({
+			prepared,
+			path: playfieldPathPoints(
+				prepared.playfieldPath,
+				currentBeat,
+				approachBeats,
+			),
+		}))
+		.sort(
+			(left, right) =>
+				Number(
+					left.prepared.note.kind.type === "tap" &&
+						left.prepared.note.kind.tap.type === "xTap",
+				) -
+				Number(
+					right.prepared.note.kind.type === "tap" &&
+						right.prepared.note.kind.tap.type === "xTap",
+				),
+		);
 	for (const { prepared, path } of visibleNotes) {
 		drawPath(prepared.note, path);
 	}
