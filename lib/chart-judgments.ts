@@ -8,6 +8,7 @@ export type JudgmentSound =
 	| "xTap"
 	| "flick"
 	| "sideTap"
+	| "holdTap"
 	| "holdNote"
 	| "sideHold"
 	| "slideHold";
@@ -93,7 +94,7 @@ function noteJudgments(
 		case "exHold":
 		case "airHold":
 			return [
-				{ beat, sound: isSideLane ? "sideTap" : "tap" },
+				{ beat, sound: isSideLane ? "sideTap" : "holdTap" },
 				...(note.kind.type === "hold" ||
 				note.kind.type === "exHold" ||
 				note.kind.type === "airHold"
@@ -104,7 +105,7 @@ function noteJudgments(
 					: []),
 				{
 					beat: positionValue(note.kind.end),
-					sound: isSideLane ? "sideTap" : "tap",
+					sound: isSideLane ? "sideTap" : "holdTap",
 				},
 			];
 		case "slide":
