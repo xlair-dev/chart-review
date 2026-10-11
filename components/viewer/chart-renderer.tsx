@@ -225,6 +225,17 @@ function paintNoteHead(
 		context.beginPath();
 		context.roundRect(x, y - height / 2, width, height, height * 0.4);
 		context.fill();
+		if (note.kind.type === "tap" && note.kind.tap.type === "xTap") {
+			context.strokeStyle = "#713f12";
+			context.lineWidth = Math.max(1, height * 0.16);
+			context.lineCap = "round";
+			context.beginPath();
+			context.moveTo(x + width * 0.3, y - height * 0.2);
+			context.lineTo(x + width * 0.7, y + height * 0.2);
+			context.moveTo(x + width * 0.7, y - height * 0.2);
+			context.lineTo(x + width * 0.3, y + height * 0.2);
+			context.stroke();
+		}
 		if (angle !== undefined) context.restore();
 		return;
 	}
@@ -412,6 +423,7 @@ interface PreparedNote {
 interface ChartRenderData {
 	end: number;
 	measureBoundaries: number[];
+	chart: ChartData;
 	spatialIndex: PreparedNote[];
 	spatialIndexTree: number[];
 	spatialIndexSize: number;
@@ -513,6 +525,7 @@ function renderDataFor(chart: ChartData): ChartRenderData {
 	const data: ChartRenderData = {
 		end,
 		measureBoundaries: measureBoundaries(chart, end),
+		chart,
 		spatialIndex,
 		spatialIndexTree,
 		spatialIndexSize,
@@ -828,12 +841,71 @@ function paintPlayfield(
 	context.stroke();
 
 	const approachBeats = 6 / noteSpeed;
-	const perspectiveDepth = (beat: number) => {
-		const normalizedDistance = clamp(
-			1 - (beat - currentBeat) / approachBeats,
-			0,
-			1,
-		);
+	const perspectiveDepth = (beat: number, note?: Note) => {
+		const from = Math.min(currentBeat, beat);
+		const to = Math.max(currentBeat, beat);
+		const changes = data.chart.scrollSpeedChanges
+			.filter((change) => {
+				if (change.scope.type === "global") return true;
+				if (!note) return false;
+				if (change.scope.type === "note")
+					return change.scope.noteId === note.id;
+				if (change.scope.type === "group")
+					return change.scope.groupId === note.speedGroup;
+				if (change.scope.lane.type !== note.lane.type) return false;
+				if (change.scope.lane.type === "side") {
+					return (
+						note.lane.type === "side" &&
+						change.scope.lane.button === note.lane.button
+					);
+				}
+				return (
+					note.lane.type === "slider" &&
+					change.scope.lane.start < note.lane.start + note.lane.width &&
+					note.lane.start < change.scope.lane.start + change.scope.lane.width
+				);
+			})
+			.sort(
+				(left, right) =>
+					positionValue(left.position) - positionValue(right.position),
+			);
+		const speedAt = (position: number) => {
+			let speed = 1;
+			for (const change of changes) {
+				const start = positionValue(change.position);
+				const end =
+					change.duration === null
+						? Number.POSITIVE_INFINITY
+						: start + positionValue(change.duration);
+				if (position >= start && position < end) speed = change.speed;
+			}
+			return speed;
+		};
+		const boundaries = [
+			from,
+			...changes.flatMap((change) => {
+				const start = positionValue(change.position);
+				const end =
+					change.duration === null
+						? undefined
+						: start + positionValue(change.duration);
+				return [start, ...(end === undefined ? [] : [end])].filter(
+					(point) => point > from && point < to,
+				);
+			}),
+			to,
+		].sort((left, right) => left - right);
+		let distance = 0;
+		for (let index = 1; index < boundaries.length; index++) {
+			const start = boundaries[index - 1];
+			const end = boundaries[index];
+			if (start !== undefined && end !== undefined) {
+				const midpoint = (start + end) / 2;
+				distance += (end - start) * speedAt(midpoint);
+			}
+		}
+		const signedDistance = beat < currentBeat ? -distance : distance;
+		const normalizedDistance = clamp(1 - signedDistance / approachBeats, 0, 1);
 		return (
 			normalizedDistance /
 			(playfieldFarDistance - (playfieldFarDistance - 1) * normalizedDistance)
@@ -891,8 +963,8 @@ function paintPlayfield(
 		for (let index = 1; index < path.length; index += 1) {
 			const previous = path[index - 1];
 			const point = path[index];
-			const previousDepth = perspectiveDepth(previous.position);
-			const pointDepth = perspectiveDepth(point.position);
+			const previousDepth = perspectiveDepth(previous.position, note);
+			const pointDepth = perspectiveDepth(point.position, note);
 			const [previousLeft, previousYOnLane] = renderedLanePointAtDepth(
 				previous.laneStart,
 				previousDepth,
@@ -955,7 +1027,7 @@ function paintPlayfield(
 				continue;
 			}
 			const [laneStart, laneEnd] = laneRange(checkpoint.lane);
-			const depth = perspectiveDepth(checkpoint.position);
+			const depth = perspectiveDepth(checkpoint.position, prepared.note);
 			const [left, leftY] = renderedLanePointAtDepth(laneStart, depth);
 			const [right, rightY] = renderedLanePointAtDepth(laneEnd, depth);
 			context.strokeStyle = color;
@@ -997,7 +1069,7 @@ function paintPlayfield(
 		const { laneStart: startLane, laneEnd: endLane } = prepared;
 		const headIsVisible = distance >= -1;
 		const headY = Math.max(horizonY, Math.min(floorY, yAtBeat(notePosition)));
-		const headDepth = perspectiveDepth(notePosition);
+		const headDepth = perspectiveDepth(notePosition, note);
 		const hasSideHoldCenterline = isSideHold(note);
 		const [headLeft, headLeftY] = renderedLanePointAtDepth(
 			startLane,
@@ -1036,10 +1108,12 @@ function paintPlayfield(
 				const segmentStartDepth = perspectiveDepth(
 					sustainStartVisible +
 						(sustainEndVisible - sustainStartVisible) * startRatio,
+					note,
 				);
 				const segmentEndDepth = perspectiveDepth(
 					sustainStartVisible +
 						(sustainEndVisible - sustainStartVisible) * endRatio,
+					note,
 				);
 				const [segmentStartLeft, segmentStartLeftY] = renderedLanePointAtDepth(
 					startLane,
@@ -1093,7 +1167,7 @@ function paintPlayfield(
 				sustainEnd >= currentBeat - playfieldLookBehindBeats &&
 				sustainEnd <= currentBeat + approachBeats
 			) {
-				const endDepth = perspectiveDepth(sustainEnd);
+				const endDepth = perspectiveDepth(sustainEnd, note);
 				const [endLeft, endLeftY] = renderedLanePointAtDepth(
 					startLane,
 					endDepth,
