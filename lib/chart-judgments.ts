@@ -8,7 +8,7 @@ export type JudgmentSound =
 	| "xTap"
 	| "flick"
 	| "sideTap"
-	| "holdTap"
+	| "checkpoint"
 	| "sideHold"
 	| "slideHold";
 
@@ -46,7 +46,6 @@ function soundForTap(tap: TapKind, isSideLane: boolean): JudgmentSound {
 function slidePointJudgments(
 	points: SlidePoint[],
 	startBeat: number,
-	isSideLane: boolean,
 ): ChartJudgment[] {
 	let startPointConsumed = false;
 	return [
@@ -64,7 +63,7 @@ function slidePointJudgments(
 			return [
 				{
 					beat,
-					sound: isSideLane ? ("sideTap" as const) : ("holdTap" as const),
+					sound: "checkpoint" as const,
 				},
 			];
 		}),
@@ -93,25 +92,25 @@ function noteJudgments(
 		case "exHold":
 		case "airHold":
 			return [
-				{ beat, sound: isSideLane ? "sideTap" : "holdTap" },
+				{ beat, sound: isSideLane ? "sideTap" : "checkpoint" },
 				...(note.kind.type === "hold" ||
 				note.kind.type === "exHold" ||
 				note.kind.type === "airHold"
 					? note.kind.checkpoints.map((checkpoint) => ({
 							beat: positionValue(checkpoint),
-							sound: "holdTap" as const,
+							sound: "checkpoint" as const,
 						}))
 					: []),
 				{
 					beat: positionValue(note.kind.end),
-					sound: isSideLane ? "sideTap" : "holdTap",
+					sound: isSideLane ? "sideTap" : "checkpoint",
 				},
 			];
 		case "slide":
 		case "exSlide":
 		case "airSlide":
 		case "airCrush":
-			return slidePointJudgments(note.kind.points, beat, isSideLane);
+			return slidePointJudgments(note.kind.points, beat);
 		case "air":
 			return [
 				{

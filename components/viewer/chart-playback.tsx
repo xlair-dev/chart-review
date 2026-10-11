@@ -29,7 +29,7 @@ const judgmentSoundSources: Record<JudgmentSound, string> = {
 	xTap: "/sounds/judgments/x-tap.mp3",
 	flick: "/sounds/judgments/flick.mp3",
 	sideTap: "/sounds/judgments/side-tap.mp3",
-	holdTap: "/sounds/judgments/hold-tap.mp3",
+	checkpoint: "/sounds/judgments/checkpoint.mp3",
 	sideHold: "/sounds/judgments/side-hold.mp3",
 	slideHold: "/sounds/judgments/slide-hold.mp3",
 };
