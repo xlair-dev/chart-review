@@ -6,7 +6,7 @@ use chart::{
     ScrollScope, ScrollSpeedChange, SideButton, SlidePoint, SlidePointKind, TapKind, TempoChange,
 };
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use wasm_bindgen::prelude::*;
 
 /// Parses a chart using the selected interpretation rules and returns its shared chart model as JSON.
@@ -22,18 +22,36 @@ pub fn parse_chart_json(format: &str, mode: &str, source: &[u8]) -> Result<Strin
         "normal" => ChartMode::Normal,
         _ => return Err(JsValue::from_str("unsupported chart mode")),
     };
-    let (source, extended_speeds) = if format.extension() == "ugc" {
+    let (source, extended_speeds, main_timeline, zero_timeline_alias) = if format.extension()
+        == "ugc"
+    {
         let source = std::str::from_utf8(source)
             .map_err(|_| JsValue::from_str("UGC charts must use UTF-8 encoding"))?;
-        let (source, speeds) = parse_ugc_speed_fields(source)?;
-        (source, speeds)
+        let (source, speeds, main_timeline, zero_timeline_alias) = parse_ugc_speed_fields(source)?;
+        (source, speeds, Some(main_timeline), zero_timeline_alias)
     } else {
-        (source.to_vec(), Vec::new())
+        (source.to_vec(), Vec::new(), None, None)
     };
     let mut chart = chart_converter::parse_bytes_with_mode(format, mode, &source)
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
     for speed in extended_speeds {
         chart.add_scroll_speed_change(speed);
+    }
+    if let Some(main_timeline) = main_timeline {
+        for index in 0..chart.notes().len() {
+            let note_id = NoteId::new(index as u32);
+            let speed_group = chart
+                .note_speed_group(note_id)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+            let speed_group = match (speed_group, zero_timeline_alias) {
+                (Some(alias), Some(zero)) if alias == zero => Some(0),
+                (Some(group), _) => Some(group),
+                (None, _) => Some(main_timeline),
+            };
+            chart
+                .set_note_speed_group(note_id, speed_group)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        }
     }
     serde_json::to_string(&ChartData::from_chart(format.extension(), &chart))
         .map_err(|error| JsValue::from_str(&error.to_string()))
@@ -52,9 +70,14 @@ struct UgcSpeedPoint {
     speed: f64,
 }
 
-/// Resolves UMGR v2.01 speed fields that the pinned chart converter does not parse.
-/// Field positions depend on the chart's UGC tick resolution, measure lengths, and SOFFSET flag.
-fn parse_ugc_speed_fields(source: &str) -> Result<(Vec<u8>, Vec<ScrollSpeedChange>), JsValue> {
+/// Normalizes UGC timeline IDs and resolves UMGR v2.01 speed fields before the pinned converter parses.
+/// The converter maps `USETIL 0` to an unselected group and accepts only `MAINTIL 0`.
+/// Field positions also depend on UGC tick resolution, measure lengths, and SOFFSET.
+fn parse_ugc_speed_fields(
+    source: &str,
+) -> Result<(Vec<u8>, Vec<ScrollSpeedChange>, u32, Option<u32>), JsValue> {
+    let (main_timeline, header_selects_timeline, zero_timeline_alias) =
+        ugc_timeline_compatibility(source)?;
     let mut ticks_per_beat = 480_u64;
     let mut timeline = MeasureTimeline::new(
         Position::new(4, 1).map_err(|error| JsValue::from_str(&error.to_string()))?,
@@ -63,9 +86,19 @@ fn parse_ugc_speed_fields(source: &str) -> Result<(Vec<u8>, Vec<ScrollSpeedChang
     let mut definitions = BTreeMap::<u32, Vec<UgcSpeedPoint>>::new();
     let mut fields = Vec::new();
     let mut filtered = Vec::with_capacity(source.len());
+    let mut in_header = true;
     for (line_index, line) in source.lines().enumerate() {
         let line_number = line_index + 1;
         let trimmed = line.trim();
+        if trimmed == "@ENDHEAD" {
+            filtered.extend_from_slice(line.as_bytes());
+            filtered.extend_from_slice(b"\n");
+            if !header_selects_timeline {
+                filtered.extend_from_slice(format!("@USETIL\t{main_timeline}\n").as_bytes());
+            }
+            in_header = false;
+            continue;
+        }
         if let Some(value) = trimmed.strip_prefix('@') {
             let (name, args) = value.split_once('\t').unwrap_or((value, ""));
             let args: Vec<_> = args.split('\t').collect();
@@ -120,6 +153,16 @@ fn parse_ugc_speed_fields(source: &str) -> Result<(Vec<u8>, Vec<ScrollSpeedChang
                             line: line_number,
                         });
                     }
+                }
+                "MAINTIL" if in_header && args.len() == 1 => {
+                    filtered.extend_from_slice(b"@MAINTIL\t0\n");
+                    continue;
+                }
+                "USETIL" if args.first() == Some(&"0") => {
+                    let alias = zero_timeline_alias
+                        .ok_or_else(|| ugc_line_error(line_number, "missing timeline alias"))?;
+                    filtered.extend_from_slice(format!("@USETIL\t{alias}\n").as_bytes());
+                    continue;
                 }
                 _ => {}
             }
@@ -185,7 +228,59 @@ fn parse_ugc_speed_fields(source: &str) -> Result<(Vec<u8>, Vec<ScrollSpeedChang
             changes.push(change);
         }
     }
-    Ok((filtered, changes))
+    Ok((filtered, changes, main_timeline, zero_timeline_alias))
+}
+
+fn ugc_timeline_compatibility(source: &str) -> Result<(u32, bool, Option<u32>), JsValue> {
+    let mut main_timeline = 0;
+    let mut header_selects_timeline = false;
+    let mut in_header = true;
+    let mut has_zero_selection = false;
+    let mut timeline_ids = BTreeSet::new();
+    for (line_index, line) in source.lines().enumerate() {
+        let line_number = line_index + 1;
+        let trimmed = line.trim();
+        if trimmed == "@ENDHEAD" {
+            in_header = false;
+            continue;
+        }
+        let Some(value) = trimmed.strip_prefix('@') else {
+            continue;
+        };
+        let (name, args) = value.split_once('\t').unwrap_or((value, ""));
+        let args: Vec<_> = args.split('\t').collect();
+        match name {
+            "MAINTIL" if in_header && args.len() == 1 => {
+                main_timeline = parse_ugc_u32(args.first(), line_number)?;
+                timeline_ids.insert(main_timeline);
+            }
+            "TIL" => {
+                if let Some(id) = args.first().and_then(|value| value.parse::<u32>().ok()) {
+                    timeline_ids.insert(id);
+                }
+            }
+            "USETIL" => {
+                if in_header {
+                    header_selects_timeline = true;
+                }
+                if let Some(id) = args.first().and_then(|value| value.parse::<u32>().ok()) {
+                    timeline_ids.insert(id);
+                    has_zero_selection |= id == 0;
+                }
+            }
+            _ => {}
+        }
+    }
+    let zero_timeline_alias = if has_zero_selection {
+        let alias = (0..=u32::MAX)
+            .rev()
+            .find(|id| !timeline_ids.contains(id))
+            .ok_or_else(|| JsValue::from_str("UGC timeline IDs are exhausted"))?;
+        Some(alias)
+    } else {
+        None
+    };
+    Ok((main_timeline, header_selects_timeline, zero_timeline_alias))
 }
 
 fn ugc_position(
