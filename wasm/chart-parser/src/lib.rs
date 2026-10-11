@@ -465,7 +465,11 @@ impl From<&ScrollSpeedChange> for ScrollSpeedChangeData {
 }
 
 #[derive(Serialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 enum ScrollScopeData {
     Global,
     Lane { lane: LaneData },

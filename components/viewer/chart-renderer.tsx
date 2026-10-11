@@ -913,8 +913,8 @@ function paintPlayfield(
 			(playfieldFarDistance - (playfieldFarDistance - 1) * normalizedDistance)
 		);
 	};
-	const yAtBeat = (beat: number) => {
-		const depth = perspectiveDepth(beat);
+	const yAtBeat = (beat: number, note?: Note) => {
+		const depth = perspectiveDepth(beat, note);
 		return horizonY + depth * (floorY - horizonY);
 	};
 	const drawMeasureSegment = (
@@ -1082,7 +1082,10 @@ function paintPlayfield(
 			continue;
 		const { laneStart: startLane, laneEnd: endLane } = prepared;
 		const headIsVisible = distance >= -1;
-		const headY = Math.max(horizonY, Math.min(floorY, yAtBeat(notePosition)));
+		const headY = Math.max(
+			horizonY,
+			Math.min(floorY, yAtBeat(notePosition, prepared.note)),
+		);
 		const headDepth = perspectiveDepth(notePosition, note);
 		const hasSideHoldCenterline = isSideHold(note);
 		const [headLeft, headLeftY] = renderedLanePointAtDepth(
