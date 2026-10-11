@@ -95,7 +95,6 @@ async function requestAccessToken(config: Auth0Config): Promise<CachedToken> {
 				client_id: config.clientId,
 				client_secret: config.clientSecret,
 				audience: config.audience,
-				scope: "device",
 				grant_type: "client_credentials",
 			}),
 		},

@@ -1,14 +1,13 @@
-import type { ChartData, Note, TapKind } from "@/lib/chart-model";
+import type { ChartData, Note, SlidePoint, TapKind } from "@/lib/chart-model";
 import { sideXTapPairs } from "@/lib/chart-note-relations";
 import { positionValue } from "@/lib/chart-position";
 
 export type JudgmentSound =
 	| "tap"
-	| "slideTap"
 	| "xTap"
 	| "flick"
 	| "sideTap"
-	| "holdNote"
+	| "hold"
 	| "sideHold"
 	| "slideHold";
 
@@ -43,6 +42,34 @@ function soundForTap(tap: TapKind, isSideLane: boolean): JudgmentSound {
 	}
 }
 
+function slidePointJudgments(
+	points: SlidePoint[],
+	startBeat: number,
+	isSideLane: boolean,
+): ChartJudgment[] {
+	let startPointConsumed = false;
+	return [
+		{
+			beat: startBeat,
+			sound: isSideLane ? "sideTap" : "tap",
+		},
+		...points.flatMap((point) => {
+			if (point.kind !== "visible") return [];
+			const beat = positionValue(point.position);
+			if (!startPointConsumed && beat === startBeat) {
+				startPointConsumed = true;
+				return [];
+			}
+			return [
+				{
+					beat,
+					sound: isSideLane ? ("sideTap" as const) : ("hold" as const),
+				},
+			];
+		}),
+	];
+}
+
 function noteJudgments(
 	note: Note,
 	sideXTapAirNotes: ReadonlySet<number>,
@@ -60,30 +87,30 @@ function noteJudgments(
 				},
 			];
 		case "exTap":
-			return [{ beat, sound: "flick" }];
+			return [{ beat, sound: "xTap" }];
 		case "hold":
 		case "exHold":
 		case "airHold":
 			return [
-				{ beat, sound: isSideLane ? "sideTap" : "tap" },
+				{ beat, sound: isSideLane ? "sideTap" : "hold" },
 				...(note.kind.type === "hold" ||
 				note.kind.type === "exHold" ||
 				note.kind.type === "airHold"
 					? note.kind.checkpoints.map((checkpoint) => ({
 							beat: positionValue(checkpoint),
-							sound: "holdNote" as const,
+							sound: "hold" as const,
 						}))
 					: []),
 				{
 					beat: positionValue(note.kind.end),
-					sound: isSideLane ? "sideTap" : "tap",
+					sound: isSideLane ? "sideTap" : "hold",
 				},
 			];
 		case "slide":
 		case "exSlide":
 		case "airSlide":
 		case "airCrush":
-			return [{ beat, sound: "slideTap" }];
+			return slidePointJudgments(note.kind.points, beat, isSideLane);
 		case "air":
 			return [
 				{
@@ -121,9 +148,7 @@ function sustainedSoundInterval(note: Note) {
 	}
 	if (
 		note.kind.type === "slide" ||
-		note.kind.type === "exSlide" ||
-		note.kind.type === "airSlide" ||
-		note.kind.type === "airCrush"
+		note.kind.type === "exSlide"
 	) {
 		const end = note.kind.points.at(-1);
 		if (end) {
