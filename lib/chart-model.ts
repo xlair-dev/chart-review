@@ -17,6 +17,7 @@ export type SideButton =
 
 export interface ChartData {
 	format: ChartFormat;
+	mainSpeedGroup: number | null;
 	baseBpm: number | null;
 	audioOffsetSeconds: number | null;
 	priorityEnabled: boolean | null;
