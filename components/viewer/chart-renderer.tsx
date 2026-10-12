@@ -830,7 +830,7 @@ function paintPlayfield(
 	context.stroke();
 
 	const approachBeats = 6 / noteSpeed;
-	const perspectiveDepth = (
+	const signedScrollDistance = (
 		beat: number,
 		note?: Note,
 		speedGroup = note?.speedGroup,
@@ -910,7 +910,19 @@ function paintPlayfield(
 				distance += (end - start) * speedAt(midpoint);
 			}
 		}
-		const signedDistance = beat < currentBeat ? -distance : distance;
+		return beat < currentBeat ? -distance : distance;
+	};
+	const withinApproach = (
+		beat: number,
+		note?: Note,
+		speedGroup = note?.speedGroup,
+	) => signedScrollDistance(beat, note, speedGroup) <= approachBeats;
+	const perspectiveDepth = (
+		beat: number,
+		note?: Note,
+		speedGroup = note?.speedGroup,
+	) => {
+		const signedDistance = signedScrollDistance(beat, note, speedGroup);
 		const normalizedDistance = clamp(1 - signedDistance / approachBeats, 0, 1);
 		return (
 			normalizedDistance /
@@ -951,11 +963,16 @@ function paintPlayfield(
 	}
 	for (
 		let index = measureIndex;
-		index < data.measureBoundaries.length &&
-		data.measureBoundaries[index] <= currentBeat + approachBeats;
+		index < data.measureBoundaries.length;
 		index++
 	) {
 		const beat = data.measureBoundaries[index];
+		if (
+			beat === undefined ||
+			!withinApproach(beat, undefined, data.chart.mainSpeedGroup)
+		) {
+			continue;
+		}
 		const y = Math.max(
 			horizonY,
 			Math.min(floorY, yAtBeat(beat, undefined, data.chart.mainSpeedGroup)),
@@ -1018,8 +1035,13 @@ function paintPlayfield(
 	const visibleNotes = notesOverlapping(
 		data,
 		currentBeat - playfieldLookBehindBeats,
-		currentBeat + approachBeats,
+		Number.POSITIVE_INFINITY,
 	)
+		.filter((prepared) =>
+			prepared.position < currentBeat
+				? prepared.endPosition >= currentBeat - playfieldLookBehindBeats
+				: withinApproach(prepared.position, prepared.note),
+		)
 		.map((prepared) => ({
 			prepared,
 			path: playfieldPathPoints(
@@ -1047,7 +1069,7 @@ function paintPlayfield(
 		for (const checkpoint of prepared.checkpoints) {
 			if (
 				checkpoint.position < currentBeat ||
-				checkpoint.position > currentBeat + approachBeats
+				!withinApproach(checkpoint.position, prepared.note)
 			) {
 				continue;
 			}
@@ -1088,7 +1110,7 @@ function paintPlayfield(
 			!isSustainVisible &&
 			!isPathVisible &&
 			(visibleEnd < currentBeat - playfieldLookBehindBeats ||
-				distance > approachBeats)
+				!withinApproach(notePosition, note))
 		)
 			continue;
 		const { laneStart: startLane, laneEnd: endLane } = prepared;
