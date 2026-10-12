@@ -407,6 +407,13 @@ interface PreparedNote {
 	path: RawPathPoint[];
 	playfieldPath: RawPathPoint[];
 	checkpoints: RawPathPoint[];
+	scrollTimeline: ScrollTimeline;
+}
+
+interface ScrollTimeline {
+	boundaries: number[];
+	speeds: number[];
+	cumulativeDistances: number[];
 }
 
 interface ChartRenderData {
@@ -416,10 +423,174 @@ interface ChartRenderData {
 	spatialIndex: PreparedNote[];
 	spatialIndexTree: number[];
 	spatialIndexSize: number;
+	mainScrollTimeline: ScrollTimeline;
+	scrollTimelines: ScrollTimeline[];
+	scrollTimelineByNote: Map<Note, ScrollTimeline>;
 }
 
 /** Parsed chart data is immutable while rendered, so derived geometry stays valid for this cache entry. */
 const chartRenderDataCache = new WeakMap<ChartData, ChartRenderData>();
+
+function scrollScopeMatches(
+	change: ChartData["scrollSpeedChanges"][number],
+	note?: Note,
+	speedGroup = note?.speedGroup,
+): boolean {
+	if (change.scope.type === "global") return true;
+	if (change.scope.type === "group") return change.scope.groupId === speedGroup;
+	if (!note) return false;
+	if (change.scope.type === "note") return change.scope.noteId === note.id;
+	if (change.scope.lane.type !== note.lane.type) return false;
+	if (change.scope.lane.type === "side") {
+		return (
+			note.lane.type === "side" && change.scope.lane.button === note.lane.button
+		);
+	}
+	return (
+		note.lane.type === "slider" &&
+		change.scope.lane.start < note.lane.start + note.lane.width &&
+		note.lane.start < change.scope.lane.start + change.scope.lane.width
+	);
+}
+
+function scrollTimelineKey(
+	changes: ChartData["scrollSpeedChanges"],
+	note?: Note,
+	speedGroup = note?.speedGroup,
+): string {
+	return changes
+		.flatMap((change, index) =>
+			scrollScopeMatches(change, note, speedGroup) ? [index] : [],
+		)
+		.join(",");
+}
+
+function compileScrollTimeline(
+	changes: ChartData["scrollSpeedChanges"],
+	note?: Note,
+	speedGroup = note?.speedGroup,
+): ScrollTimeline {
+	const applicable = changes
+		.filter((change) => scrollScopeMatches(change, note, speedGroup))
+		.map((change) => ({
+			change,
+			start: positionValue(change.position),
+			end:
+				change.duration === null
+					? Number.POSITIVE_INFINITY
+					: positionValue(change.position) + positionValue(change.duration),
+			priority:
+				change.scope.type === "global"
+					? 0
+					: change.scope.type === "group"
+						? 1
+						: change.scope.type === "lane"
+							? 2
+							: 3,
+		}))
+		.sort((left, right) => left.start - right.start);
+	const boundaries = [
+		...new Set(
+			applicable.flatMap(({ start, end }) =>
+				Number.isFinite(end) ? [start, end] : [start],
+			),
+		),
+	].sort((left, right) => left - right);
+	if (boundaries.length === 0) {
+		return { boundaries, speeds: [1], cumulativeDistances: [] };
+	}
+	const speedAt = (position: number) => {
+		let speed = 1;
+		let priority = -1;
+		for (const event of applicable) {
+			if (position < event.start || position >= event.end) continue;
+			if (event.priority >= priority) {
+				speed = event.change.speed;
+				priority = event.priority;
+			}
+		}
+		return speed;
+	};
+	const speeds = boundaries.map((boundary, index) => {
+		const next = boundaries[index + 1];
+		return speedAt(next === undefined ? boundary + 1 : (boundary + next) / 2);
+	});
+	const cumulativeDistances = Array(boundaries.length).fill(0) as number[];
+	for (let index = 0; index + 1 < boundaries.length; index++) {
+		const start = boundaries[index];
+		const end = boundaries[index + 1];
+		if (start !== undefined && end !== undefined) {
+			cumulativeDistances[index + 1] =
+				(cumulativeDistances[index] ?? 0) +
+				(end - start) * (speeds[index] ?? 1);
+		}
+	}
+	return { boundaries, speeds, cumulativeDistances };
+}
+
+function scrollDistanceAt(timeline: ScrollTimeline, beat: number): number {
+	const first = timeline.boundaries[0];
+	if (first === undefined) return beat;
+	if (beat < first) return beat - first;
+	let low = 0;
+	let high = timeline.boundaries.length;
+	while (low < high) {
+		const middle = (low + high) >>> 1;
+		if ((timeline.boundaries[middle] ?? Number.POSITIVE_INFINITY) <= beat) {
+			low = middle + 1;
+		} else {
+			high = middle;
+		}
+	}
+	const index = Math.max(0, low - 1);
+	return (
+		(timeline.cumulativeDistances[index] ?? 0) +
+		(beat - (timeline.boundaries[index] ?? first)) *
+			(timeline.speeds[index] ?? 1)
+	);
+}
+
+function maximumVisibleBeat(
+	timeline: ScrollTimeline,
+	currentBeat: number,
+	approachBeats: number,
+): number {
+	let position = currentBeat;
+	let remaining = approachBeats;
+	const first = timeline.boundaries[0];
+	if (first === undefined) return currentBeat + approachBeats;
+	let index = 0;
+	while (
+		index + 1 < timeline.boundaries.length &&
+		(timeline.boundaries[index + 1] ?? Number.NEGATIVE_INFINITY) <= currentBeat
+	) {
+		index++;
+	}
+	if (currentBeat < first) {
+		const distance = first - currentBeat;
+		if (remaining <= distance) return currentBeat + remaining;
+		remaining -= distance;
+		position = first;
+	} else {
+		position = currentBeat;
+	}
+	for (; index + 1 < timeline.boundaries.length; index++) {
+		const end = timeline.boundaries[index + 1];
+		const speed = timeline.speeds[index] ?? 1;
+		if (end === undefined || end <= position) continue;
+		if (speed < 0) return Number.POSITIVE_INFINITY;
+		if (speed > 0) {
+			const distance = (end - position) * speed;
+			if (remaining <= distance) return position + remaining / speed;
+			remaining -= distance;
+		}
+		position = end;
+	}
+	const tailSpeed = timeline.speeds.at(-1) ?? 1;
+	return tailSpeed > 0
+		? position + remaining / tailSpeed
+		: Number.POSITIVE_INFINITY;
+}
 
 function notesForRendering(chart: ChartData): Note[] {
 	const sideButtonsByParent = new Map<number, Set<SideButton>>();
@@ -447,6 +618,20 @@ function renderDataFor(chart: ChartData): ChartRenderData {
 	const cached = chartRenderDataCache.get(chart);
 	if (cached) return cached;
 
+	const timelineCache = new Map<string, ScrollTimeline>();
+	const timelineFor = (note?: Note, speedGroup = note?.speedGroup) => {
+		const key = scrollTimelineKey(chart.scrollSpeedChanges, note, speedGroup);
+		let timeline = timelineCache.get(key);
+		if (!timeline) {
+			timeline = compileScrollTimeline(
+				chart.scrollSpeedChanges,
+				note,
+				speedGroup,
+			);
+			timelineCache.set(key, timeline);
+		}
+		return timeline;
+	};
 	let end = 4;
 	const notes = notesForRendering(chart).map((note, index): PreparedNote => {
 		const position = positionValue(note.position);
@@ -491,6 +676,7 @@ function renderDataFor(chart: ChartData): ChartRenderData {
 				(point, pointIndex, points) =>
 					pointIndex === 0 || point.position >= points[pointIndex - 1].position,
 			),
+			scrollTimeline: timelineFor(note),
 		};
 	});
 	const spatialIndex = [...notes].sort(
@@ -518,6 +704,11 @@ function renderDataFor(chart: ChartData): ChartRenderData {
 		spatialIndex,
 		spatialIndexTree,
 		spatialIndexSize,
+		mainScrollTimeline: timelineFor(undefined, chart.mainSpeedGroup),
+		scrollTimelines: [...new Set(timelineCache.values())],
+		scrollTimelineByNote: new Map(
+			notes.map((prepared) => [prepared.note, prepared.scrollTimeline]),
+		),
 	};
 	chartRenderDataCache.set(chart, data);
 	return data;
@@ -830,87 +1021,27 @@ function paintPlayfield(
 	context.stroke();
 
 	const approachBeats = 6 / noteSpeed;
+	const currentScrollDistances = new Map<ScrollTimeline, number>();
 	const signedScrollDistance = (
 		beat: number,
 		note?: Note,
 		speedGroup = note?.speedGroup,
 	) => {
-		const from = Math.min(currentBeat, beat);
-		const to = Math.max(currentBeat, beat);
-		const changes = data.chart.scrollSpeedChanges
-			.filter((change) => {
-				if (change.scope.type === "global") return true;
-				if (change.scope.type === "group")
-					return change.scope.groupId === speedGroup;
-				if (!note) return false;
-				if (change.scope.type === "note")
-					return change.scope.noteId === note.id;
-				if (change.scope.lane.type !== note.lane.type) return false;
-				if (change.scope.lane.type === "side") {
-					return (
-						note.lane.type === "side" &&
-						change.scope.lane.button === note.lane.button
+		const timeline = note
+			? (data.scrollTimelineByNote.get(note) ?? data.mainScrollTimeline)
+			: speedGroup === data.chart.mainSpeedGroup
+				? data.mainScrollTimeline
+				: compileScrollTimeline(
+						data.chart.scrollSpeedChanges,
+						undefined,
+						speedGroup,
 					);
-				}
-				return (
-					note.lane.type === "slider" &&
-					change.scope.lane.start < note.lane.start + note.lane.width &&
-					note.lane.start < change.scope.lane.start + change.scope.lane.width
-				);
-			})
-			.sort(
-				(left, right) =>
-					positionValue(left.position) - positionValue(right.position),
-			);
-		const speedAt = (position: number) => {
-			let speed = 1;
-			let priority = -1;
-			for (const change of changes) {
-				const start = positionValue(change.position);
-				const end =
-					change.duration === null
-						? Number.POSITIVE_INFINITY
-						: start + positionValue(change.duration);
-				if (position < start || position >= end) continue;
-				const changePriority =
-					change.scope.type === "global"
-						? 0
-						: change.scope.type === "group"
-							? 1
-							: change.scope.type === "lane"
-								? 2
-								: 3;
-				if (changePriority >= priority) {
-					speed = change.speed;
-					priority = changePriority;
-				}
-			}
-			return speed;
-		};
-		const boundaries = [
-			from,
-			...changes.flatMap((change) => {
-				const start = positionValue(change.position);
-				const end =
-					change.duration === null
-						? undefined
-						: start + positionValue(change.duration);
-				return [start, ...(end === undefined ? [] : [end])].filter(
-					(point) => point > from && point < to,
-				);
-			}),
-			to,
-		].sort((left, right) => left - right);
-		let distance = 0;
-		for (let index = 1; index < boundaries.length; index++) {
-			const start = boundaries[index - 1];
-			const end = boundaries[index];
-			if (start !== undefined && end !== undefined) {
-				const midpoint = (start + end) / 2;
-				distance += (end - start) * speedAt(midpoint);
-			}
+		let currentDistance = currentScrollDistances.get(timeline);
+		if (currentDistance === undefined) {
+			currentDistance = scrollDistanceAt(timeline, currentBeat);
+			currentScrollDistances.set(timeline, currentDistance);
 		}
-		return beat < currentBeat ? -distance : distance;
+		return scrollDistanceAt(timeline, beat) - currentDistance;
 	};
 	const withinApproach = (
 		beat: number,
@@ -937,6 +1068,19 @@ function paintPlayfield(
 		const depth = perspectiveDepth(beat, note, speedGroup);
 		return horizonY + depth * (floorY - horizonY);
 	};
+	const maximumNoteBeat = data.scrollTimelines.reduce(
+		(maximum, timeline) =>
+			Math.max(
+				maximum,
+				maximumVisibleBeat(timeline, currentBeat, approachBeats),
+			),
+		currentBeat,
+	);
+	const maximumMeasureBeat = maximumVisibleBeat(
+		data.mainScrollTimeline,
+		currentBeat,
+		approachBeats,
+	);
 	const drawMeasureSegment = (
 		startLane: number,
 		endLane: number,
@@ -963,7 +1107,9 @@ function paintPlayfield(
 	}
 	for (
 		let index = measureIndex;
-		index < data.measureBoundaries.length;
+		index < data.measureBoundaries.length &&
+		(data.measureBoundaries[index] ?? Number.POSITIVE_INFINITY) <=
+			maximumMeasureBeat;
 		index++
 	) {
 		const beat = data.measureBoundaries[index];
@@ -1035,7 +1181,7 @@ function paintPlayfield(
 	const visibleNotes = notesOverlapping(
 		data,
 		currentBeat - playfieldLookBehindBeats,
-		Number.POSITIVE_INFINITY,
+		maximumNoteBeat,
 	)
 		.filter((prepared) =>
 			prepared.position < currentBeat
