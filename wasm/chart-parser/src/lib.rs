@@ -53,8 +53,12 @@ pub fn parse_chart_json(format: &str, mode: &str, source: &[u8]) -> Result<Strin
                 .map_err(|error| JsValue::from_str(&error.to_string()))?;
         }
     }
-    serde_json::to_string(&ChartData::from_chart(format.extension(), &chart))
-        .map_err(|error| JsValue::from_str(&error.to_string()))
+    serde_json::to_string(&ChartData::from_chart(
+        format.extension(),
+        main_timeline,
+        &chart,
+    ))
+    .map_err(|error| JsValue::from_str(&error.to_string()))
 }
 
 struct UgcSpeedField {
@@ -348,6 +352,7 @@ fn ugc_line_error(line: usize, message: &str) -> JsValue {
 #[serde(rename_all = "camelCase")]
 struct ChartData<'a> {
     format: &'a str,
+    main_speed_group: Option<u32>,
     base_bpm: Option<f64>,
     audio_offset_seconds: Option<f64>,
     priority_enabled: Option<bool>,
@@ -358,9 +363,10 @@ struct ChartData<'a> {
 }
 
 impl<'a> ChartData<'a> {
-    fn from_chart(format: &'a str, chart: &Chart) -> Self {
+    fn from_chart(format: &'a str, main_speed_group: Option<u32>, chart: &Chart) -> Self {
         Self {
             format,
+            main_speed_group,
             base_bpm: chart.base_bpm(),
             audio_offset_seconds: chart.audio_offset_seconds(),
             priority_enabled: chart.priority_enabled(),

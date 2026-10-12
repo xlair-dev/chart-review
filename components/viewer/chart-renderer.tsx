@@ -830,17 +830,21 @@ function paintPlayfield(
 	context.stroke();
 
 	const approachBeats = 6 / noteSpeed;
-	const perspectiveDepth = (beat: number, note?: Note) => {
+	const perspectiveDepth = (
+		beat: number,
+		note?: Note,
+		speedGroup = note?.speedGroup,
+	) => {
 		const from = Math.min(currentBeat, beat);
 		const to = Math.max(currentBeat, beat);
 		const changes = data.chart.scrollSpeedChanges
 			.filter((change) => {
 				if (change.scope.type === "global") return true;
+				if (change.scope.type === "group")
+					return change.scope.groupId === speedGroup;
 				if (!note) return false;
 				if (change.scope.type === "note")
 					return change.scope.noteId === note.id;
-				if (change.scope.type === "group")
-					return change.scope.groupId === note.speedGroup;
 				if (change.scope.lane.type !== note.lane.type) return false;
 				if (change.scope.lane.type === "side") {
 					return (
@@ -913,8 +917,12 @@ function paintPlayfield(
 			(playfieldFarDistance - (playfieldFarDistance - 1) * normalizedDistance)
 		);
 	};
-	const yAtBeat = (beat: number, note?: Note) => {
-		const depth = perspectiveDepth(beat, note);
+	const yAtBeat = (
+		beat: number,
+		note?: Note,
+		speedGroup = note?.speedGroup,
+	) => {
+		const depth = perspectiveDepth(beat, note, speedGroup);
 		return horizonY + depth * (floorY - horizonY);
 	};
 	const drawMeasureSegment = (
@@ -948,7 +956,10 @@ function paintPlayfield(
 		index++
 	) {
 		const beat = data.measureBoundaries[index];
-		const y = Math.max(horizonY, Math.min(floorY, yAtBeat(beat)));
+		const y = Math.max(
+			horizonY,
+			Math.min(floorY, yAtBeat(beat, undefined, data.chart.mainSpeedGroup)),
+		);
 		context.strokeStyle = playfieldColors.sideMeasureLine;
 		context.lineWidth = 1;
 		drawMeasureSegment(0, 2, y);
