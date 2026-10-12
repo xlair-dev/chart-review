@@ -1,4 +1,10 @@
-import type { ChartData, Note, SlidePoint, TapKind } from "@/lib/chart-model";
+import type {
+	ChartData,
+	Lane,
+	Note,
+	SlidePoint,
+	TapKind,
+} from "@/lib/chart-model";
 import { sideXTapPairs } from "@/lib/chart-note-relations";
 import { positionValue } from "@/lib/chart-position";
 
@@ -43,16 +49,79 @@ function soundForTap(tap: TapKind, isSideLane: boolean): JudgmentSound {
 	}
 }
 
+function sameLane(left: Lane, right: Lane): boolean {
+	if (left.type !== right.type) return false;
+	if (left.type === "side" && right.type === "side") {
+		return left.button === right.button;
+	}
+	return (
+		left.type === "slider" &&
+		right.type === "slider" &&
+		left.start === right.start &&
+		left.width === right.width
+	);
+}
+
+/** X-tap starts use co-located X-tap notes; side X-taps use their paired AIR note. */
+function xTapStartNotes(
+	chart: ChartData,
+	sideXTapRelations: ReturnType<typeof sideXTapPairs>,
+): ReadonlySet<number> {
+	const sideXTapParents = new Set(
+		sideXTapRelations.map((relation) => relation.parentId),
+	);
+	const xTapNotes = chart.notes.filter(
+		(note) =>
+			note.kind.type === "tap" &&
+			note.kind.tap.type === "xTap" &&
+			!sideXTapParents.has(note.id),
+	);
+	const notesById = new Map(chart.notes.map((note) => [note.id, note]));
+	return new Set(
+		chart.notes.flatMap((note) => {
+			const isCenterSlide =
+				note.lane.type === "slider" &&
+				(note.kind.type === "slide" || note.kind.type === "exSlide");
+			const isSideHold =
+				note.lane.type === "side" &&
+				(note.kind.type === "hold" ||
+					note.kind.type === "exHold" ||
+					note.kind.type === "airHold");
+			if (!isCenterSlide && !isSideHold) return [];
+
+			const startBeat = positionValue(note.position);
+			const hasXTapNote = xTapNotes.some(
+				(xTap) =>
+					positionValue(xTap.position) === startBeat &&
+					sameLane(xTap.lane, note.lane),
+			);
+			const sideButton =
+				note.lane.type === "side" ? note.lane.button : undefined;
+			const hasSideXTap =
+				sideButton !== undefined &&
+				sideXTapRelations.some((relation) => {
+					if (relation.button !== sideButton) return false;
+					const airNote = notesById.get(relation.airNoteId);
+					return (
+						airNote !== undefined &&
+						positionValue(airNote.position) === startBeat
+					);
+				});
+			return hasXTapNote || hasSideXTap ? [note.id] : [];
+		}),
+	);
+}
+
 function slidePointJudgments(
 	points: SlidePoint[],
 	startBeat: number,
+	startsWithXTap: boolean,
 ): ChartJudgment[] {
 	let startPointConsumed = false;
 	return [
-		{
-			beat: startBeat,
-			sound: "slideTap" as const,
-		},
+		...(startsWithXTap
+			? []
+			: [{ beat: startBeat, sound: "slideTap" as const }]),
 		...points.flatMap((point) => {
 			if (point.kind !== "visible") return [];
 			const beat = positionValue(point.position);
@@ -73,6 +142,7 @@ function slidePointJudgments(
 function noteJudgments(
 	note: Note,
 	sideXTapAirNotes: ReadonlySet<number>,
+	xTapStartNotes: ReadonlySet<number>,
 ): ChartJudgment[] {
 	const beat = positionValue(note.position);
 	const isSideLane = note.lane.type === "side";
@@ -92,7 +162,16 @@ function noteJudgments(
 		case "exHold":
 		case "airHold":
 			return [
-				{ beat, sound: isSideLane ? "sideTap" : "checkpoint" },
+				...(xTapStartNotes.has(note.id)
+					? []
+					: [
+							{
+								beat,
+								sound: isSideLane
+									? ("sideTap" as const)
+									: ("checkpoint" as const),
+							},
+						]),
 				...(note.kind.type === "hold" ||
 				note.kind.type === "exHold" ||
 				note.kind.type === "airHold"
@@ -110,7 +189,11 @@ function noteJudgments(
 		case "exSlide":
 		case "airSlide":
 		case "airCrush":
-			return slidePointJudgments(note.kind.points, beat);
+			return slidePointJudgments(
+				note.kind.points,
+				beat,
+				xTapStartNotes.has(note.id),
+			);
 		case "air":
 			return [
 				{
@@ -162,6 +245,7 @@ function sustainedSoundInterval(note: Note) {
 /** Visible points judge; control and invisible points only shape the slide. */
 export function chartSoundPlan(chart: ChartData): ChartSoundPlan {
 	const sideXTapRelations = sideXTapPairs(chart);
+	const xTapStarts = xTapStartNotes(chart, sideXTapRelations);
 	const sideXTapParents = new Set(
 		sideXTapRelations.map((relation) => relation.parentId),
 	);
@@ -177,7 +261,7 @@ export function chartSoundPlan(chart: ChartData): ChartSoundPlan {
 					note.kind.tap.type === "xTap"
 				),
 		)
-		.flatMap((note) => noteJudgments(note, sideXTapAirNotes));
+		.flatMap((note) => noteJudgments(note, sideXTapAirNotes, xTapStarts));
 	const changes = new Map<number, { sideHold: number; slideHold: number }>();
 	for (const note of chart.notes) {
 		const interval = sustainedSoundInterval(note);
