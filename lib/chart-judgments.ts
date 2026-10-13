@@ -118,7 +118,7 @@ function slidePointJudgments(
 	startsWithXTap: boolean,
 ): ChartJudgment[] {
 	let startPointConsumed = false;
-	return [
+	const judgments = [
 		...(startsWithXTap
 			? []
 			: [{ beat: startBeat, sound: "slideTap" as const }]),
@@ -137,6 +137,19 @@ function slidePointJudgments(
 			];
 		}),
 	];
+	const endPoint = points.at(-1);
+	if (endPoint) {
+		const endBeat = positionValue(endPoint.position);
+		if (
+			!judgments.some(
+				(judgment) =>
+					judgment.beat === endBeat && judgment.sound === "checkpoint",
+			)
+		) {
+			judgments.push({ beat: endBeat, sound: "checkpoint" });
+		}
+	}
+	return judgments;
 }
 
 function noteJudgments(
@@ -182,7 +195,7 @@ function noteJudgments(
 					: []),
 				{
 					beat: positionValue(note.kind.end),
-					sound: isSideLane ? "sideTap" : "checkpoint",
+					sound: "checkpoint",
 				},
 			];
 		case "slide":
