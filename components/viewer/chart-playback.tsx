@@ -34,7 +34,7 @@ const judgmentSoundSources: Record<JudgmentSound, string> = {
 	slideHold: "/sounds/judgments/slide-hold.mp3",
 };
 
-const judgmentVolume = 0.5;
+const judgmentVolume = 0.55;
 
 export function ChartPlayback({
 	chart,
