@@ -433,7 +433,7 @@ function chartPositionLabel(
 		boundary = nextBoundary;
 		beatInMeasure = 0;
 	}
-	return `${boundary.measure + 1} - ${formatBeat(beatInMeasure)} (${formatBeat(beat)})`;
+	return `${boundary.measure + 1} - ${formatBeat(beatInMeasure + 1)} (${formatBeat(beat)})`;
 }
 
 interface PreparedNote {
