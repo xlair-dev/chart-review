@@ -365,18 +365,23 @@ function isInnerSideHold(note: Note): boolean {
 	);
 }
 
-function measureBoundaries(chart: ChartData, end: number): number[] {
+interface MeasureBoundary {
+	measure: number;
+	beat: number;
+}
+
+function measureBoundaries(chart: ChartData, end: number): MeasureBoundary[] {
 	const measures = [...chart.measureLengths].sort(
 		(left, right) => left.measure - right.measure,
 	);
 	if (measures.length === 0) {
-		return Array.from(
-			{ length: Math.ceil(end / 4) + 1 },
-			(_, index) => index * 4,
-		);
+		return Array.from({ length: Math.ceil(end / 4) + 1 }, (_, measure) => ({
+			measure,
+			beat: measure * 4,
+		}));
 	}
 
-	const boundaries: number[] = [];
+	const boundaries: MeasureBoundary[] = [];
 	let duration = 4;
 	let measure = 0;
 	let beat = 0;
@@ -389,11 +394,46 @@ function measureBoundaries(chart: ChartData, end: number): number[] {
 			duration = Math.max(0.01, positionValue(measures[lengthIndex].length));
 			lengthIndex += 1;
 		}
-		boundaries.push(beat);
+		boundaries.push({ measure, beat });
 		beat += duration;
 		measure += 1;
 	}
 	return boundaries;
+}
+
+function formatBeat(beat: number): string {
+	const rounded = Math.round(beat * 100) / 100;
+	return Number.isInteger(rounded)
+		? String(rounded)
+		: rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function chartPositionLabel(
+	boundaries: MeasureBoundary[],
+	beat: number,
+): string {
+	let low = 0;
+	let high = boundaries.length;
+	while (low < high) {
+		const middle = (low + high) >>> 1;
+		if ((boundaries[middle]?.beat ?? Number.POSITIVE_INFINITY) <= beat) {
+			low = middle + 1;
+		} else {
+			high = middle;
+		}
+	}
+	let boundary = boundaries[Math.max(0, low - 1)];
+	if (!boundary) return formatBeat(beat);
+	let beatInMeasure = beat - boundary.beat;
+	const nextBoundary = boundaries[low];
+	if (
+		nextBoundary &&
+		Math.round(beatInMeasure * 100) / 100 >= nextBoundary.beat - boundary.beat
+	) {
+		boundary = nextBoundary;
+		beatInMeasure = 0;
+	}
+	return `${boundary.measure + 1} - ${formatBeat(beatInMeasure)} (${formatBeat(beat)})`;
 }
 
 interface PreparedNote {
@@ -418,7 +458,7 @@ interface ScrollTimeline {
 
 interface ChartRenderData {
 	end: number;
-	measureBoundaries: number[];
+	measureBoundaries: MeasureBoundary[];
 	chart: ChartData;
 	spatialIndex: PreparedNote[];
 	spatialIndexTree: number[];
@@ -1099,7 +1139,7 @@ function paintPlayfield(
 	const firstVisibleMeasure = currentBeat - playfieldLookBehindBeats;
 	while (measureIndex < measureHigh) {
 		const middle = (measureIndex + measureHigh) >>> 1;
-		if (data.measureBoundaries[middle] < firstVisibleMeasure) {
+		if ((data.measureBoundaries[middle]?.beat ?? 0) < firstVisibleMeasure) {
 			measureIndex = middle + 1;
 		} else {
 			measureHigh = middle;
@@ -1108,11 +1148,11 @@ function paintPlayfield(
 	for (
 		let index = measureIndex;
 		index < data.measureBoundaries.length &&
-		(data.measureBoundaries[index] ?? Number.POSITIVE_INFINITY) <=
+		(data.measureBoundaries[index]?.beat ?? Number.POSITIVE_INFINITY) <=
 			maximumMeasureBeat;
 		index++
 	) {
-		const beat = data.measureBoundaries[index];
+		const beat = data.measureBoundaries[index]?.beat;
 		if (
 			beat === undefined ||
 			!withinApproach(beat, undefined, data.chart.mainSpeedGroup)
@@ -1705,8 +1745,11 @@ export function ChartRenderer({
 							<div>
 								<p className="text-sm font-semibold">この位置にコメント</p>
 								<p className="mt-1 text-xs text-slate-500">
-									{commentComposer.position.toFixed(2)} 拍 ・ レーン{" "}
-									{commentComposer.lanePosition.toFixed(1)}
+									{chartPositionLabel(
+										renderData.measureBoundaries,
+										commentComposer.position,
+									)}{" "}
+									・ レーン {commentComposer.lanePosition.toFixed(1)}
 								</p>
 							</div>
 							<button
@@ -1744,7 +1787,9 @@ export function ChartRenderer({
 					<label className="min-w-0 flex-1">
 						<span className="mb-2 flex justify-between">
 							<span>再生位置</span>
-							<span>{currentBeat.toFixed(2)} 拍</span>
+							<span>
+								{chartPositionLabel(renderData.measureBoundaries, currentBeat)}
+							</span>
 						</span>
 						<input
 							aria-label="再生位置"
@@ -1833,8 +1878,11 @@ export function ChartRenderer({
 													{comment.displayName}
 												</strong>
 												<span className="mt-1 block text-xs text-slate-400">
-													{comment.position.toFixed(2)} 拍 ・ レーン{" "}
-													{comment.lanePosition.toFixed(1)}
+													{chartPositionLabel(
+														renderData.measureBoundaries,
+														comment.position,
+													)}{" "}
+													・ レーン {comment.lanePosition.toFixed(1)}
 												</span>
 											</button>
 											<div className="mt-1 whitespace-pre-wrap text-sm leading-5 text-slate-600">
