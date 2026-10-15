@@ -25,22 +25,16 @@ function requestAudioPlay(player: HTMLAudioElement) {
 
 const judgmentSoundSources: Record<JudgmentSound, string> = {
 	tap: "/sounds/judgments/tap.mp3",
+	slideTap: "/sounds/judgments/slide-tap.mp3",
+	xTap: "/sounds/judgments/x-tap.mp3",
 	flick: "/sounds/judgments/flick.mp3",
 	sideTap: "/sounds/judgments/side-tap.mp3",
-	hold: "/sounds/judgments/hold.mp3",
+	checkpoint: "/sounds/judgments/checkpoint.mp3",
 	sideHold: "/sounds/judgments/side-hold.mp3",
 	slideHold: "/sounds/judgments/slide-hold.mp3",
 };
 
-function judgmentVolume(sound: JudgmentSound): number {
-	if (sound === "slideHold") return 0.18;
-	if (sound === "sideHold") return 0.22;
-	if (sound === "tap") return 1.7;
-	if (sound === "flick" || sound === "sideTap") {
-		return 1.6;
-	}
-	return 0.65;
-}
+const judgmentVolume = 0.55;
 
 export function ChartPlayback({
 	chart,
@@ -114,7 +108,7 @@ export function ChartPlayback({
 		for (const sound of sounds) {
 			const player = new Audio(judgmentSoundSources[sound]);
 			player.preload = "auto";
-			player.volume = Math.min(1, judgmentVolume(sound));
+			player.volume = judgmentVolume;
 			player.loop = sound === "sideHold" || sound === "slideHold";
 			player.load();
 			players[sound] = [player];
@@ -245,7 +239,7 @@ export function ChartPlayback({
 					const source = context.createBufferSource();
 					const gain = context.createGain();
 					source.buffer = buffer;
-					gain.gain.value = judgmentVolume(judgment.sound);
+					gain.gain.value = judgmentVolume;
 					source.connect(gain);
 					gain.connect(judgmentCompressor.current ?? context.destination);
 					const secondsUntilJudgment = Math.max(
@@ -271,7 +265,7 @@ export function ChartPlayback({
 					if (!player) {
 						player = new Audio(judgmentSoundSources[judgment.sound]);
 						player.preload = "auto";
-						player.volume = Math.min(1, judgmentVolume(judgment.sound));
+						player.volume = judgmentVolume;
 						player.load();
 						voices.push(player);
 					}
