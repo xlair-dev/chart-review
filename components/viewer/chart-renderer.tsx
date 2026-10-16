@@ -68,40 +68,52 @@ export function ChartRenderer({
 			onPositionChange={onPositionChange}
 			onSheetPositionSelect={onCommentPositionChange}
 			position={position}
-			sheetOverlay={(geometry) =>
-				!isPlaying &&
-				comments.map((comment) => (
-					<div
-						className="absolute z-10 w-max max-w-[min(28rem,80%)] break-words rounded-xl border border-sky-200/80 bg-sky-50/60 px-3 py-2 text-left text-xs text-slate-800 shadow-lg backdrop-blur-sm [overflow-wrap:anywhere]"
-						key={comment.id}
-						style={{
-							top: geometry.positionStyle(comment.position),
-							left: geometry.laneStyle(comment.lanePosition),
-							transform: geometry.laneTransform(comment.lanePosition),
-						}}
-					>
-						<strong className="block text-sky-900">
-							{comment.displayName}
-						</strong>
-						<span className="mt-1 block whitespace-pre-wrap leading-5">
-							<CommentBody text={comment.body} />
-						</span>
-						{onCommentDelete && (
-							<button
-								aria-label="コメントを削除"
-								className="mt-1 text-[10px] text-slate-500 underline hover:text-rose-700"
-								onClick={(event) => {
-									event.stopPropagation();
-									onCommentDelete(comment);
+			sheetOverlay={(geometry) => (
+				<>
+					{commentComposer && (
+						<div
+							aria-hidden="true"
+							className="pointer-events-none absolute z-20 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-sky-400 shadow-[0_0_0_3px_rgba(56,189,248,0.35)]"
+							style={{
+								left: geometry.laneStyle(commentComposer.lanePosition),
+								top: geometry.positionStyle(commentComposer.position),
+							}}
+						/>
+					)}
+					{!isPlaying &&
+						comments.map((comment) => (
+							<div
+								className="absolute z-10 w-max max-w-[min(28rem,80%)] break-words rounded-xl border border-sky-200/80 bg-sky-50/60 px-3 py-2 text-left text-xs text-slate-800 shadow-lg backdrop-blur-sm [overflow-wrap:anywhere]"
+								key={comment.id}
+								style={{
+									top: geometry.positionStyle(comment.position),
+									left: geometry.laneStyle(comment.lanePosition),
+									transform: geometry.laneTransform(comment.lanePosition),
 								}}
-								type="button"
 							>
-								削除
-							</button>
-						)}
-					</div>
-				))
-			}
+								<strong className="block text-sky-900">
+									{comment.displayName}
+								</strong>
+								<span className="mt-1 block whitespace-pre-wrap leading-5">
+									<CommentBody text={comment.body} />
+								</span>
+								{onCommentDelete && (
+									<button
+										aria-label="コメントを削除"
+										className="mt-1 text-[10px] text-slate-500 underline hover:text-rose-700"
+										onClick={(event) => {
+											event.stopPropagation();
+											onCommentDelete(comment);
+										}}
+										type="button"
+									>
+										削除
+									</button>
+								)}
+							</div>
+						))}
+				</>
+			)}
 			sheetFooter={(geometry) =>
 				commentComposer && (
 					<div className="absolute inset-x-4 bottom-4 z-20 rounded-xl border border-sky-200 bg-white/95 p-4 text-slate-900 shadow-xl backdrop-blur-sm">
