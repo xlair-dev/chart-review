@@ -145,13 +145,23 @@ export function ProgressOverview() {
 											{passed.difficulty}
 										</span>
 									)}
-									<button
-										className="text-xs text-slate-500 hover:text-rose-700"
-										onClick={() => setPendingUndo(passed)}
-										type="button"
-									>
-										合格を取り消す
-									</button>
+									<div className="flex items-center gap-3">
+										{passed.meetingId && passed.chartId ? (
+											<a
+												className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-white"
+												href={`/api/meetings/${passed.meetingId}/charts/${passed.chartId}/file`}
+											>
+												譜面をダウンロード
+											</a>
+										) : null}
+										<button
+											className="text-xs text-slate-500 hover:text-rose-700"
+											onClick={() => setPendingUndo(passed)}
+											type="button"
+										>
+											合格を取り消す
+										</button>
+									</div>
 								</li>
 							);
 						})}
