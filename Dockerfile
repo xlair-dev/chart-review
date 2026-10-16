@@ -1,27 +1,12 @@
 # syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
-FROM --platform=$BUILDPLATFORM rust:1-bookworm@sha256:e12566d5abc17a0da741628782cdb504b68b8961f5bfcf677936bf3e8b32de29 AS wasm-builder
-
-RUN rustup target add wasm32-unknown-unknown \
-	&& cargo install wasm-pack --locked --version 0.15.0
-
-WORKDIR /src/wasm/chart-parser
-COPY wasm/chart-parser/Cargo.toml wasm/chart-parser/Cargo.lock ./
-RUN mkdir src && touch src/lib.rs
-# Keep Cargo dependencies in an exported image layer; GitHub Actions does not persist BuildKit cache mounts by default.
-RUN cargo build --locked --target wasm32-unknown-unknown --release --lib
-COPY wasm/chart-parser/src ./src
-# Remove placeholder-crate artifacts so Cargo must compile the copied parser source.
-RUN cargo clean --package chart-review-parser --target wasm32-unknown-unknown --release \
-	&& wasm-pack build --target web --release --out-dir /out
-
 FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5 AS dependencies
 
 RUN apt-get update \
 	&& apt-get install --no-install-recommends -y python3 make g++ \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& corepack enable \
-	&& corepack prepare pnpm@12.9.1 --activate
+	&& corepack prepare pnpm@12.11.2 --activate
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -33,10 +18,6 @@ FROM dependencies AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY . .
-# The Wasm parser is built in the separate Rust stage before the Next.js build.
-COPY --from=wasm-builder /out ./public/wasm/chart-parser
-# Verify generated glue and Wasm exports stay compatible before publishing the image.
-RUN node --input-type=module -e 'import fs from "node:fs"; import init, { parse_chart_json } from "./public/wasm/chart-parser/chart_review_parser.js"; const wasm = await init(fs.readFileSync("./public/wasm/chart-parser/chart_review_parser_bg.wasm")); if (typeof parse_chart_json !== "function" || typeof wasm.__wbindgen_free !== "function") throw new Error("Chart parser Wasm exports are incomplete");'
 RUN pnpm exec next build
 
 FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5 AS runner

@@ -1,10 +1,13 @@
 "use client";
 
+import {
+	type ChartData,
+	type ChartMode,
+	parseChartFile,
+} from "@xlair-dev/chart-viewer";
 import { useEffect, useState } from "react";
 import { ChartPlayback } from "@/components/viewer/chart-playback";
 import type { CatalogItem } from "@/lib/catalog-model";
-import type { ChartData } from "@/lib/chart-model";
-import { type ChartMode, parseChartFile } from "@/lib/chart-parser";
 
 const fieldControlClassName =
 	"mt-2 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal leading-5";
