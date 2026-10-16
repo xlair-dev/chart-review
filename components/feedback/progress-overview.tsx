@@ -155,7 +155,7 @@ export function ProgressOverview() {
 											</a>
 										) : null}
 										<button
-											className="text-xs text-slate-500 hover:text-rose-700"
+											className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
 											onClick={() => setPendingUndo(passed)}
 											type="button"
 										>
