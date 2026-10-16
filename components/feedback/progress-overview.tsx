@@ -148,7 +148,7 @@ export function ProgressOverview() {
 									<div className="flex items-center gap-3">
 										{passed.meetingId && passed.chartId ? (
 											<a
-												className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-white"
+												className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800"
 												href={`/api/meetings/${passed.meetingId}/charts/${passed.chartId}/file`}
 											>
 												譜面をダウンロード
