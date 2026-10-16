@@ -1,5 +1,11 @@
 "use client";
 
+import {
+	type ChartData,
+	parseChartFile,
+	positionFromValue,
+	positionValue,
+} from "@xlair-dev/chart-viewer";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/confirmation-dialog";
@@ -10,9 +16,6 @@ import {
 import { ChartPlayback } from "@/components/viewer/chart-playback";
 import type { ChartComment } from "@/components/viewer/chart-renderer";
 import type { CatalogItem } from "@/lib/catalog-model";
-import type { ChartData } from "@/lib/chart-model";
-import { parseChartFile } from "@/lib/chart-parser";
-import { positionFromValue, positionValue } from "@/lib/chart-position";
 import { useDisplayName } from "@/lib/use-display-name";
 
 interface MeetingChart {

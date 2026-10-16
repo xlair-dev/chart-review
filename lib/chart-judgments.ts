@@ -4,9 +4,8 @@ import type {
 	Note,
 	SlidePoint,
 	TapKind,
-} from "@/lib/chart-model";
-import { sideXTapPairs } from "@/lib/chart-note-relations";
-import { positionValue } from "@/lib/chart-position";
+} from "@xlair-dev/chart-viewer";
+import { positionValue, sideXTapPairs } from "@xlair-dev/chart-viewer";
 
 export type JudgmentSound =
 	| "tap"

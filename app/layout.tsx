@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "@xlair-dev/chart-viewer/style.css";
 import { DisplayNameManager } from "@/components/display-name-manager";
 import "./globals.css";
 
