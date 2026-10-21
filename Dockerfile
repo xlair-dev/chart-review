@@ -15,7 +15,7 @@ COPY wasm/chart-parser/src ./src
 RUN cargo clean --package chart-review-parser --target wasm32-unknown-unknown --release \
 	&& wasm-pack build --target web --release --out-dir /out
 
-FROM node:24-bookworm-slim@sha256:91acba91b842bec0bf7ea6f5e09c644c7ccad72c4996ed9616d861d1c7cd60d4 AS dependencies
+FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS dependencies
 
 RUN apt-get update \
 	&& apt-get install --no-install-recommends -y python3 make g++ \
@@ -39,7 +39,7 @@ COPY --from=wasm-builder /out ./public/wasm/chart-parser
 RUN node --input-type=module -e 'import fs from "node:fs"; import init, { parse_chart_json } from "./public/wasm/chart-parser/chart_review_parser.js"; const wasm = await init(fs.readFileSync("./public/wasm/chart-parser/chart_review_parser_bg.wasm")); if (typeof parse_chart_json !== "function" || typeof wasm.__wbindgen_free !== "function") throw new Error("Chart parser Wasm exports are incomplete");'
 RUN pnpm exec next build
 
-FROM node:24-bookworm-slim@sha256:91acba91b842bec0bf7ea6f5e09c644c7ccad72c4996ed9616d861d1c7cd60d4 AS runner
+FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS runner
 
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
