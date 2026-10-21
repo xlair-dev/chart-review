@@ -11,9 +11,9 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 [[package]]
 name = "c2s"
 version = "0.1.0"
-source = "git+https://github.com/xlair-dev/ChartConverter.git?rev=20867590dbbf51b8bd5ecd4f444d7d0f9db230cd#20867590dbbf51b8bd5ecd4f444d7d0f9db230cd"
+source = "git+https://github.com/xlair-dev/ChartConverter.git?rev=aefd69a0ddc0f849b6b6f70de408b5405317d307#aefd69a0ddc0f849b6b6f70de408b5405317d307"
 dependencies = [
- "chart 0.1.0 (git+https://github.com/xlair-dev/ChartConverter.git?rev=20867590dbbf51b8bd5ecd4f444d7d0f9db230cd)",
+ "chart",
  "thiserror",
 ]
 
@@ -26,14 +26,6 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 [[package]]
 name = "chart"
 version = "0.1.0"
-source = "git+https://github.com/xlair-dev/ChartConverter.git?rev=20867590dbbf51b8bd5ecd4f444d7d0f9db230cd#20867590dbbf51b8bd5ecd4f444d7d0f9db230cd"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
-name = "chart"
-version = "0.1.0"
 source = "git+https://github.com/xlair-dev/ChartConverter.git?rev=aefd69a0ddc0f849b6b6f70de408b5405317d307#aefd69a0ddc0f849b6b6f70de408b5405317d307"
 dependencies = [
  "thiserror",
@@ -42,10 +34,10 @@ dependencies = [
 [[package]]
 name = "chart-converter"
 version = "0.1.0"
-source = "git+https://github.com/xlair-dev/ChartConverter.git?rev=20867590dbbf51b8bd5ecd4f444d7d0f9db230cd#20867590dbbf51b8bd5ecd4f444d7d0f9db230cd"
+source = "git+https://github.com/xlair-dev/ChartConverter.git?rev=aefd69a0ddc0f849b6b6f70de408b5405317d307#aefd69a0ddc0f849b6b6f70de408b5405317d307"
 dependencies = [
  "c2s",
- "chart 0.1.0 (git+https://github.com/xlair-dev/ChartConverter.git?rev=20867590dbbf51b8bd5ecd4f444d7d0f9db230cd)",
+ "chart",
  "sus",
  "thiserror",
  "ugc",
@@ -55,7 +47,7 @@ dependencies = [
 name = "chart-review-parser"
 version = "0.1.0"
 dependencies = [
- "chart 0.1.0 (git+https://github.com/xlair-dev/ChartConverter.git?rev=aefd69a0ddc0f849b6b6f70de408b5405317d307)",
+ "chart",
  "chart-converter",
  "serde",
  "serde_json",
@@ -150,9 +142,9 @@ dependencies = [
 [[package]]
 name = "sus"
 version = "0.1.0"
-source = "git+https://github.com/xlair-dev/ChartConverter.git?rev=20867590dbbf51b8bd5ecd4f444d7d0f9db230cd#20867590dbbf51b8bd5ecd4f444d7d0f9db230cd"
+source = "git+https://github.com/xlair-dev/ChartConverter.git?rev=aefd69a0ddc0f849b6b6f70de408b5405317d307#aefd69a0ddc0f849b6b6f70de408b5405317d307"
 dependencies = [
- "chart 0.1.0 (git+https://github.com/xlair-dev/ChartConverter.git?rev=20867590dbbf51b8bd5ecd4f444d7d0f9db230cd)",
+ "chart",
  "thiserror",
 ]
 
@@ -190,9 +182,9 @@ dependencies = [
 [[package]]
 name = "ugc"
 version = "0.1.0"
-source = "git+https://github.com/xlair-dev/ChartConverter.git?rev=20867590dbbf51b8bd5ecd4f444d7d0f9db230cd#20867590dbbf51b8bd5ecd4f444d7d0f9db230cd"
+source = "git+https://github.com/xlair-dev/ChartConverter.git?rev=aefd69a0ddc0f849b6b6f70de408b5405317d307#aefd69a0ddc0f849b6b6f70de408b5405317d307"
 dependencies = [
- "chart 0.1.0 (git+https://github.com/xlair-dev/ChartConverter.git?rev=20867590dbbf51b8bd5ecd4f444d7d0f9db230cd)",
+ "chart",
  "thiserror",
 ]
 
