@@ -2,7 +2,7 @@
 	"name": "chart-review",
 	"version": "0.1.0",
 	"private": true,
-	"packageManager": "pnpm@12.11.2",
+	"packageManager": "pnpm@12.15.0",
 	"scripts": {
 		"dev": "next dev",
 		"build": "next build",
@@ -13,7 +13,7 @@
 	"dependencies": {
 		"@xlair-dev/chart-viewer": "github:xlair-dev/chart-viewer#5ae2ec0",
 		"better-sqlite3": "^13.0.3",
-		"next": "16.4.0",
+		"next": "16.4.3",
 		"react": "19.3.1",
 		"react-dom": "19.3.1"
 	},
