@@ -21,28 +21,6 @@ jobs:
         with:
           node-version: "24"
           cache: pnpm
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          targets: wasm32-unknown-unknown
-      - name: Cache Rust dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            wasm/chart-parser/target
-          key: ${{ runner.os }}-chart-parser-${{ hashFiles('wasm/chart-parser/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-chart-parser-
-      - name: Cache wasm-pack
-        id: cache-wasm-pack
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.cargo/bin/wasm-pack
-          key: ${{ runner.os }}-wasm-pack-0.15.0
-      - name: Install wasm-pack
-        if: steps.cache-wasm-pack.outputs.cache-hit != 'true'
-        run: cargo install wasm-pack --locked --version 0.15.0
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build application

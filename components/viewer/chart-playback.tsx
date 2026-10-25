@@ -1,5 +1,13 @@
 "use client";
 
+import type { ChartData } from "@xlair-dev/chart-viewer";
+import {
+	audioSecondsAtBeat,
+	positionAtAudioSeconds,
+	positionAtSeconds,
+	secondsAtBeat,
+	supportsChartTiming,
+} from "@xlair-dev/chart-viewer";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	type ChartComment,
@@ -7,14 +15,6 @@ import {
 	ChartRenderer,
 } from "@/components/viewer/chart-renderer";
 import { chartSoundPlan, type JudgmentSound } from "@/lib/chart-judgments";
-import type { ChartData } from "@/lib/chart-model";
-import {
-	audioSecondsAtBeat,
-	positionAtAudioSeconds,
-	positionAtSeconds,
-	secondsAtBeat,
-	supportsChartTiming,
-} from "@/lib/chart-timing";
 
 function requestAudioPlay(player: HTMLAudioElement) {
 	void player.play().catch((error: unknown) => {

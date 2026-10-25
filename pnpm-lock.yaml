@@ -166,6 +166,9 @@ importers:
 
   .:
     dependencies:
+      '@xlair-dev/chart-viewer':
+        specifier: github:xlair-dev/chart-viewer#5ae2ec0
+        version: https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/5ae2ec0966d833ca3f200555149388bac1808bb5(react@19.3.1)
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
@@ -732,6 +735,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@xlair-dev/chart-viewer@https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/5ae2ec0966d833ca3f200555149388bac1808bb5':
+    resolution: {gitHosted: true, integrity: sha512-kAtDLW/lF3ln0urlfeFFCF3ZmZEDr/QMLfrtmJuHRx3kOHqw/akEJzvMnK/D95sMpAjrFseEUmFYuX83AF/zLQ==, tarball: https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/5ae2ec0966d833ca3f200555149388bac1808bb5}
+    version: 0.1.0
+    peerDependencies:
+      react: ^19.0.0
+
   baseline-browser-mapping@2.11.29:
     resolution: {integrity: sha512-YeesxhUmR4h5y5V8KF8iBCqJb8YFrBJ++XBTeGcWIaQOYXGN19JM0FoiOjAhwuDoln8owMgXcWBmgHtYSkky2w==}
     engines: {node: '>=6.0.0'}
@@ -1288,6 +1297,10 @@ snapshots:
 
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
+
+  '@xlair-dev/chart-viewer@https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/5ae2ec0966d833ca3f200555149388bac1808bb5(react@19.3.1)':
+    dependencies:
+      react: 19.3.1
 
   baseline-browser-mapping@2.11.29: {}
 
