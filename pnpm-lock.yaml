@@ -167,8 +167,8 @@ importers:
   .:
     dependencies:
       '@xlair-dev/chart-viewer':
-        specifier: github:xlair-dev/chart-viewer#5ae2ec0
-        version: https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/5ae2ec0966d833ca3f200555149388bac1808bb5(react@19.3.1)
+        specifier: github:xlair-dev/chart-viewer#a2a93587c440d7dac8b09650b5c5965b9f72abdd
+        version: https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/a2a93587c440d7dac8b09650b5c5965b9f72abdd(react@19.3.1)
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
@@ -735,8 +735,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@xlair-dev/chart-viewer@https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/5ae2ec0966d833ca3f200555149388bac1808bb5':
-    resolution: {gitHosted: true, integrity: sha512-kAtDLW/lF3ln0urlfeFFCF3ZmZEDr/QMLfrtmJuHRx3kOHqw/akEJzvMnK/D95sMpAjrFseEUmFYuX83AF/zLQ==, tarball: https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/5ae2ec0966d833ca3f200555149388bac1808bb5}
+  '@xlair-dev/chart-viewer@https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/a2a93587c440d7dac8b09650b5c5965b9f72abdd':
+    resolution: {gitHosted: true, integrity: sha512-qmTNUk+SI2hnsbJcVGaFcnpyXqzVeW6r9m/+I4yhcSmMwkXAOCsTXiWMbQcsvQB3JFiF1ahdnXUyyVKzpqtY9g==, tarball: https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/a2a93587c440d7dac8b09650b5c5965b9f72abdd}
     version: 0.1.0
     peerDependencies:
       react: ^19.0.0
@@ -1298,7 +1298,7 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@xlair-dev/chart-viewer@https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/5ae2ec0966d833ca3f200555149388bac1808bb5(react@19.3.1)':
+  '@xlair-dev/chart-viewer@https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/a2a93587c440d7dac8b09650b5c5965b9f72abdd(react@19.3.1)':
     dependencies:
       react: 19.3.1
 
