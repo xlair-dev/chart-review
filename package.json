@@ -11,7 +11,7 @@
 		"lint:fix": "biome check --write ."
 	},
 	"dependencies": {
-		"@xlair-dev/chart-viewer": "github:xlair-dev/chart-viewer#5ae2ec0",
+		"@xlair-dev/chart-viewer": "github:xlair-dev/chart-viewer#4bbb856",
 		"better-sqlite3": "^13.0.3",
 		"next": "16.4.3",
 		"react": "19.3.1",
