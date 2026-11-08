@@ -1,6 +1,6 @@
 services:
   chart-review:
-    image: ${CHART_REVIEW_IMAGE:-ghcr.io/xlair-dev/chart-review:latest@sha256:ba9f790c7bfc982ecb18275f031b9c894eaa759164996eb95c594b8a371a238a}
+    image: ${CHART_REVIEW_IMAGE:-ghcr.io/xlair-dev/chart-review:latest@sha256:c5b29b4a2458a506763661c521f2178583c2413f01ef1c5658b704aa56fc5174}
     container_name: chart-review
     ports:
       - "${HOST_PORT:-3000}:3000"
