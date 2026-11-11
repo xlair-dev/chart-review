@@ -13,7 +13,7 @@
 	"dependencies": {
 		"@xlair-dev/chart-viewer": "github:xlair-dev/chart-viewer#4bbb856",
 		"better-sqlite3": "^13.0.3",
-		"next": "16.4.5",
+		"next": "16.4.6",
 		"react": "19.3.1",
 		"react-dom": "19.3.1"
 	},
