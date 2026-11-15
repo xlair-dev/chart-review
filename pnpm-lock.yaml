@@ -180,7 +180,7 @@ importers:
         version: https://codeload.github.com/xlair-dev/chart-viewer/tar.gz/4bbb856331c2ea64b4ae3e3111e420cbce64617f(react@19.3.1)
       better-sqlite3:
         specifier: ^13.0.3
-        version: 13.1.1
+        version: 13.2.0
       next:
         specifier: 16.4.6
         version: 16.4.6(@types/node@24.19.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -754,8 +754,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  better-sqlite3@13.1.1:
-    resolution: {integrity: sha512-JjyLCATp+VLxZVFyWkicyzKYwpEFLCrV4MmshW97xv3JXdhw5jBDcsbEWRGm2L/96E+k7rtjON8q9nml05h3Pw==}
+  better-sqlite3@13.2.0:
+    resolution: {integrity: sha512-Z8Q/9x/uNyKxA1v4FNodyItRVRw1TeKBrmj32JhxhR0ceNcBY+wMobt/Bv7M7TzwPAXjnZRtNaEsATnUZSKWZQ==}
     engines: {node: '>=22'}
 
   caniuse-lite@1.0.30001816:
@@ -1312,7 +1312,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.29: {}
 
-  better-sqlite3@13.1.1:
+  better-sqlite3@13.2.0:
     dependencies:
       node-addon-api: 8.9.2
 
